@@ -1,4 +1,5 @@
-html,body{height:100%;margin:0}
-#game{display:block;width:100%;height:100%;background:#9fd3ff}
-#hud{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.5);color:#fff;padding:8px 10px;border-radius:6px;font-family:Arial, sans-serif;font-size:13px}
-#coords{margin-top:6px;font-size:12px;opacity:0.9}
+* {
+    padding:0;
+    margin:0;
+    box-sizing: border-box;
+}

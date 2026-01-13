@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="description" content="Python Battles - A coding battle game where you write Python code to control your character and defeat opponents.">
+  <meta name="author" content="Kaden Cruts">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Python Battles</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      display: flex;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      background-color: #1a1a1a;
+    }
+
+    /* Code Input Area - Left Side */
+    #codeInput {
+      width: 33%;
+      background-color: #2d2d2d;
+      color: #fff;
+      padding: 20px;
+      border-right: 3px solid #28a745;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #codeInput > div {
+      margin-bottom: 15px;
+    }
+
+    #codeInput h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: #28a745;
+    }
+
+    #runCodeButton {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #28a745;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    #runCodeButton:hover {
+      background-color: #218838;
+    }
+
+    #codeArea {
+      flex: 1;
+      background-color: #1a1a1a;
+      color: #00ff00;
+      border: 2px solid #28a745;
+      border-radius: 5px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      resize: none;
+      overflow-y: auto;
+    }
+
+    #codeArea::placeholder {
+      color: #666;
+    }
+
+    /* Game Area - Center */
+    #gameArea {
+      width: 34%;
+      display: flex;
+      flex-direction: column;
+      background-color: #0d0d0d;
+      border-right: 3px solid #ff6b6b;
+    }
+
+    /* Enemy Section - Top */
+    #enemySection {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      border-bottom: 3px solid #28a745;
+      justify-content: flex-start;
+    }
+
+    #enemyHPContainer {
+      margin-bottom: 20px;
+    }
+
+    #enemyHPContainer h3 {
+      color: #ff6b6b;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .hpBar {
+      width: 100%;
+      height: 30px;
+      background-color: #333;
+      border: 2px solid #666;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .hpFill {
+      height: 100%;
+      background: linear-gradient(90deg, #28a745, #20c997);
+      width: 100%;
+      transition: width 0.3s ease;
+    }
+
+    #enemySection .hpFill {
+      background: linear-gradient(90deg, #ff6b6b, #ff8787);
+    }
+
+    #enemyPositions {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      flex: 1;
+      align-items: center;
+    }
+
+    /* Player Section - Bottom */
+    #playerSection {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      justify-content: flex-end;
+    }
+
+    #playerHPContainer {
+      margin-bottom: 20px;
+    }
+
+    #playerHPContainer h3 {
+      color: #4dabf7;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    #playerSection .hpFill {
+      background: linear-gradient(90deg, #4dabf7, #74c0fc);
+    }
+
+    #playerPositions {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      align-items: flex-end;
+      height: auto;
+    }
+
+    /* Position Slots */
+    .positions {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .slot {
+      width: 100px;
+      height: 100px;
+      background-color: #1a1a1a;
+      border: 3px solid #28a745;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      color: #28a745;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .slot:hover {
+      background-color: #2d2d2d;
+      box-shadow: 0 0 15px rgba(40, 167, 69, 0.5);
+    }
+
+    #enemyPositions .slot {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    #enemyPositions .slot:hover {
+      box-shadow: 0 0 15px rgba(255, 107, 107, 0.5);
+    }
+
+    #playerPositions .slot {
+      border-color: #4dabf7;
+      color: #4dabf7;
+    }
+
+    #playerPositions .slot:hover {
+      background-color: #2d2d2d;
+      box-shadow: 0 0 15px rgba(77, 171, 247, 0.5);
+    }
+
+    /* Scrollbar Styling */
+    #codeArea::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #codeArea::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+
+    #codeArea::-webkit-scrollbar-thumb {
+      background: #28a745;
+      border-radius: 4px;
+    }
+
+    #codeArea::-webkit-scrollbar-thumb:hover {
+      background: #218838;
+    }
+
+    /* Enemy Code Area - Right Side */
+    #enemyCode {
+      width: 33%;
+      background-color: #2d2d2d;
+      color: #fff;
+      padding: 20px;
+      border-left: 3px solid #ff6b6b;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #enemyCode > div {
+      margin-bottom: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #enemyCode h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: #ff6b6b;
+    }
+
+    #enemyCodeArea {
+      flex: 1;
+      background-color: #1a1a1a;
+      color: #ff6b6b;
+      border: 2px solid #ff6b6b;
+      border-radius: 5px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      resize: none;
+      overflow-y: auto;
+      cursor: not-allowed;
+    }
+
+    #enemyCodeArea::placeholder {
+      color: #666;
+    }
+
+    #enemyCodeArea::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #enemyCodeArea::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+
+    #enemyCodeArea::-webkit-scrollbar-thumb {
+      background: #ff6b6b;
+      border-radius: 4px;
+    }
+
+    #enemyCodeArea::-webkit-scrollbar-thumb:hover {
+      background: #ff5252;
+    }
+
+    #exitButton {
+      padding: 8px 16px;
+      font-size: 14px;
+      background-color: #ff6b6b;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      align-self: flex-start;
+    }
+
+    #exitButton:hover {
+      background-color: #ff5252;
+    }
+  </style>
+  <script>
+    // Supported functions and operations
+    const ALLOWED_FUNCTIONS = ['moveLeft', 'moveRight', 'attack', 'defend', 'heal'];
+    const JAVA_KEYWORDS = ['if', 'else', 'for', 'while', 'class', 'public', 'private', 'void', 'int', 'return'];
+
+    // Wait for DOM to load before attaching event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      // Exit button functionality
+      document.getElementById('exitButton').addEventListener('click', () => {
+        window.location.href = 'index.html';
+      });
+
+      // Code validation and execution
+      document.getElementById('runCodeButton').addEventListener('click', () => {
+        const code = document.getElementById('codeArea').value.trim();
+        
+        if (!code) {
+          alert('Please enter some code first!');
+          return;
+        }
+
+        try {
+          // Validate Java syntax
+          validateJavaCode(code);
+          
+          // Parse and execute supported operations
+          executeJavaCode(code);
+        } catch (error) {
+          alert('Error: ' + error.message);
+        }
+      });
+    });
+
+    function validateJavaCode(code) {
+      const lines = code.split('\n');
+      let openedBraces = 0;
+      let openedParens = 0;
+      let inString = false;
+      let stringChar = '';
+      let inComment = false;
+
+      for (let line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Skip empty lines
+        if (!trimmedLine) continue;
+
+        // Handle line comments
+        if (trimmedLine.startsWith('//')) continue;
+
+        // Handle block comments
+        if (trimmedLine.includes('/*')) inComment = true;
+        if (trimmedLine.includes('*/')) {
+          inComment = false;
+          continue;
+        }
+        if (inComment) continue;
+
+        // Check for matching braces, parentheses, and strings
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          
+          if ((char === '"' || char === "'") && (i === 0 || line[i-1] !== '\\')) {
+            if (!inString) {
+              inString = true;
+              stringChar = char;
+            } else if (char === stringChar) {
+              inString = false;
+            }
+          }
+          
+          if (!inString) {
+            if (char === '{') openedBraces++;
+            if (char === '}') openedBraces--;
+            if (char === '(') openedParens++;
+            if (char === ')') openedParens--;
+          }
+        }
+
+        // Basic validation: check for valid operations
+        const isValidLine = isValidJavaLine(trimmedLine);
+        if (!isValidLine) {
+          throw new Error('Invalid syntax or unsupported operation: ' + trimmedLine);
+        }
+      }
+
+      if (openedBraces !== 0) {
+        throw new Error('Mismatched braces { }');
+      }
+
+      if (openedParens !== 0) {
+        throw new Error('Mismatched parentheses ( )');
+      }
+
+      if (inString) {
+        throw new Error('Unterminated string');
+      }
+    }
+
+    function isValidJavaLine(line) {
+      // Allow comments
+      if (line.startsWith('//') || line.startsWith('/*') || line.endsWith('*/')) return true;
+
+      // Allow function calls with semicolon
+      const functionCallPattern = /^(moveLeft|moveRight|attack|defend|heal)\(\);$/;
+      if (functionCallPattern.test(line)) return true;
+
+      // Allow System.out.println
+      const printPattern = /^System\.out\.println\(.*\);$/;
+      if (printPattern.test(line)) return true;
+
+      // Allow if statements
+      const ifPattern = /^if\s*\(.*\)\s*\{?$/;
+      if (ifPattern.test(line)) return true;
+
+      // Allow else/else if
+      const elsePattern = /^else\s*(if\s*\(.*\))?\s*\{?$/;
+      if (elsePattern.test(line)) return true;
+
+      // Allow for loops
+      const forPattern = /^for\s*\(.*\)\s*\{?$/;
+      if (forPattern.test(line)) return true;
+
+      // Allow while loops
+      const whilePattern = /^while\s*\(.*\)\s*\{?$/;
+      if (whilePattern.test(line)) return true;
+
+      // Allow braces
+      if (line === '{' || line === '}') return true;
+
+      // Allow variable declarations
+      const varPattern = /^(int|String|boolean|double|float)\s+\w+\s*(=\s*.*)?;?$/;
+      if (varPattern.test(line)) return true;
+
+      // Allow simple assignments
+      const assignPattern = /^\w+\s*=\s*.+;?$/;
+      if (assignPattern.test(line)) return true;
+
+      return false;
+    }
+
+    function executeJavaCode(code) {
+      const lines = code.split('\n');
+      const executedFunctions = [];
+      let ifCondition = true;
+      let depth = 0;
+
+      for (let line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Skip empty lines and comments
+        if (!trimmedLine || trimmedLine.startsWith('//')) continue;
+
+        // Handle braces for depth tracking
+        const openBraces = (trimmedLine.match(/\{/g) || []).length;
+        const closeBraces = (trimmedLine.match(/\}/g) || []).length;
+        
+        if (closeBraces > 0) depth--;
+
+        // Handle if statements
+        if (trimmedLine.startsWith('if')) {
+          ifCondition = evaluateJavaCondition(trimmedLine);
+          depth++;
+          continue;
+        }
+
+        // Handle else/else if
+        if (trimmedLine.startsWith('else')) {
+          ifCondition = !ifCondition;
+          depth++;
+          continue;
+        }
+
+        // Handle for loops
+        if (trimmedLine.startsWith('for')) {
+          depth++;
+          continue;
+        }
+
+        // Execute function calls only if condition is true and at proper depth
+        if (depth > 0 || ifCondition) {
+          const functionMatch = trimmedLine.match(/^(moveLeft|moveRight|attack|defend|heal)\(\);$/);
+          if (functionMatch) {
+            executedFunctions.push(functionMatch[1]);
+          }
+        }
+
+        if (openBraces > 0) depth++;
+      }
+
+      // Show success alert with executed actions
+      if (executedFunctions.length > 0) {
+        alert('Code executed successfully!\nActions: ' + executedFunctions.join(', '));
+      } else {
+        alert('Code validated successfully! No actions to execute.');
+      }
+    }
+
+    function evaluateJavaCondition(line) {
+      // Extract condition from if statement
+      const conditionMatch = line.match(/if\s*\((.+)\)/);
+      if (!conditionMatch) return true;
+      
+      const condition = conditionMatch[1].trim();
+      // For demo: treat simple comparisons
+      try {
+        return eval(condition);
+      } catch (e) {
+        return true; // Default to true if evaluation fails
+      }
+    }
+  </script>
+</head>
+<body>
+  <aside id="codeInput">
+    <div>
+        <h2>Code Input</h2>
+        <button id="runCodeButton">Run Code</button>
+    </div>
+    <textarea id="codeArea" placeholder="Write your Java code here..."></textarea>
+  </aside>
+  <section id="gameArea">
+    <div id="enemySection">
+      <div id="enemyHPContainer">
+        <h3>Enemy HP</h3>
+        <div id="enemyHPBar" class="hpBar">
+          <div id="enemyHPFill" class="hpFill"></div>
+        </div>
+      </div>
+      <div id="enemyPositions" class="positions">
+        <div class="position slot" id="enemy-slot-1">E1</div>
+        <div class="position slot" id="enemy-slot-2">E2</div>
+        <div class="position slot" id="enemy-slot-3">E3</div>
+      </div>
+    </div>
+    <div id="playerSection">
+      <div id="playerHPContainer">
+        <h3>Player HP</h3>
+        <div id="playerHPBar" class="hpBar">
+          <div id="playerHPFill" class="hpFill"></div>
+        </div>
+      </div>
+      <div id="playerPositions" class="positions">
+        <div class="position slot" id="player-slot-1">P1</div>
+        <div class="position slot" id="player-slot-2">P2</div>
+        <div class="position slot" id="player-slot-3">P3</div>
+      </div>
+    </div>
+  </section>
+  <aside id="enemyCode">
+    <div>
+      <h2>Enemy Code</h2>
+      <button id="exitButton">Exit</button>
+    </div>
+    <textarea id="enemyCodeArea" placeholder="Opponent's code will appear here..." readonly></textarea>
+  </aside>
+</body>
+</html>

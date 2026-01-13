@@ -2,34 +2,107 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="description" content="Python Battles - A coding battle game where you write Python code to control your character and defeat opponents.">
+  <meta name="author" content="Kaden Cruts">
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>2D Open World Template</title>
+  <title>Python Battles</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      background-image: url('images/backgrounds/background.jpg');
+      background-size: cover;
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      text-align: center;
+      color: #fff;
+      margin-top: 50px;
+      text-shadow: 2px 2px 4px #000;
+    }
+    .gameMode-select {
+      display: flex;
+      justify-content: center;
+      gap: 50px;
+      margin:50px 10px 20px;
+    }
+    .gameMode-option {
+      background: rgba(255, 255, 255, 0.0);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      width: 250px;
+      border:3px solid #000;
+      height:50vh;
+      justify-content: center;
+      background-size: cover;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      color:#fff;
+      text-shadow: 1px 1px 3px #000;
+      position: relative;
+      overflow: hidden;
+    }
+    .gameMode-option::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: inherit;
+      background-size: cover;
+      background-position: center;
+      filter: brightness(0.7) blur(2px);
+      z-index: 0;
+    }
+    .gameMode-option .content,
+    .gameMode-option h2,
+    .gameMode-option p,
+    .gameMode-option button {
+      position: relative;
+      z-index: 1;
+    }
+    .gameMode-option h2 {
+      margin-bottom: 15px;
+      filter:none;
+    }
+    .gameMode-option p {
+      margin-bottom: 20px;
+    }
+    .gameMode-option button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      background-color: #28a745;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    #singleplayer-option{
+      background-image: url('images/backgrounds/single.png');
+      
+    }
+    #multiplayer-option{
+      background-image: url('images/backgrounds/multi.png');
+    }
+  </style>
 </head>
 <body>
-  <canvas id="game"></canvas>
-  <div id="hud">
-    <div>Use Arrow keys / WASD to move. Drag to pan. Scroll to zoom.</div>
-    <div id="coords"></div>
+  <h1>Welcome to Python Battles</h1>
+  <div class="gameMode-select">
+    <div class="gameMode-option" id="singleplayer-option">
+      <div class="content">
+        <h2>Singleplayer</h2>
+        <p>Play against AI opponents in a solo adventure to unlock better libraries</p>
+        <button id="singleplayer-button">Start Singleplayer</button>
+      </div>
+    </div>
+    <div class="gameMode-option" id="multiplayer-option">
+      <h2>Multiplayer</h2>
+      <p>Compete against other players online in real-time coding battles</p>
+      <button id="multiplayer-button">Start Multiplayer</button>
+    </div>
   </div>
-  <script src="main.js"></script>
-</body>
-</html>
 
-<!doctype html>
-<html lang="en">
-<head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<title>3D Landscape Game</title>
-	<link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-	<div id="container"></div>
-	<canvas id="minimap" aria-hidden="true"></canvas>
-	<div id="scroller"></div>
 
-	<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-	<script src="main.js"></script>
+
 </body>
 </html>
