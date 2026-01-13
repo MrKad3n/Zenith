@@ -443,6 +443,14 @@
       const assignPattern = /^\w+\s*=\s*.+;?$/;
       if (assignPattern.test(line)) return true;
 
+      // Allow compound assignments (+=, -=, *=, /=, %=)
+      const compoundPattern = /^\w+\s*(\+=|-=|\*=|\/=|%=)\s*.+;?$/;
+      if (compoundPattern.test(line)) return true;
+
+      // Allow increment/decrement operators (++, --)
+      const incrementPattern = /^(\+\+\w+|\w+\+\+|--\w+|\w+--)\s*;?$/;
+      if (incrementPattern.test(line)) return true;
+
       return false;
     }
 
@@ -451,12 +459,16 @@
       const executedFunctions = [];
       let ifCondition = true;
       let depth = 0;
+      let score = 0;
 
       for (let line of lines) {
         const trimmedLine = line.trim();
         
         // Skip empty lines and comments
         if (!trimmedLine || trimmedLine.startsWith('//')) continue;
+
+        // Calculate score for this line
+        score += calculateLineScore(trimmedLine);
 
         // Handle braces for depth tracking
         const openBraces = (trimmedLine.match(/\{/g) || []).length;
@@ -495,11 +507,11 @@
         if (openBraces > 0) depth++;
       }
 
-      // Show success alert with executed actions
+      // Show success alert with executed actions and score
       if (executedFunctions.length > 0) {
-        alert('Code executed successfully!\nActions: ' + executedFunctions.join(', '));
+        alert('Code executed successfully!\nActions: ' + executedFunctions.join(', ') + '\n\nComplexity Score: ' + score + ' points');
       } else {
-        alert('Code validated successfully! No actions to execute.');
+        alert('Code validated successfully!\nComplexity Score: ' + score + ' points');
       }
     }
 
@@ -515,6 +527,79 @@
       } catch (e) {
         return true; // Default to true if evaluation fails
       }
+    }
+
+    function calculateLineScore(line) {
+      let score = 0;
+      
+      // Skip empty lines, comments, and closing braces
+      if (!line || line.startsWith('//') || line === '}' || line === '{') return 0;
+
+      // Variable declaration: 2 points
+      if (/^(int|String|boolean|double|float)\s+\w+/.test(line)) {
+        score += 2;
+      }
+
+      // If statement: 4 points
+      if (/^if\s*\(/.test(line)) {
+        score += 4;
+        // Add points for conditions inside if statement
+        const conditions = line.match(/(<|>|<=|>=|==|!=|&&|\|\|)/g);
+        if (conditions) score += conditions.length * 1;
+      }
+
+      // Else/else if: 3 points
+      if (/^else/.test(line)) {
+        score += 3;
+      }
+
+      // For loop: 5 points
+      if (/^for\s*\(/.test(line)) {
+        score += 5;
+      }
+
+      // While loop: 5 points
+      if (/^while\s*\(/.test(line)) {
+        score += 5;
+      }
+
+      // Function calls: 3 points each
+      if (/(moveLeft|moveRight|attack|defend|heal)\(\)/.test(line)) {
+        score += 3;
+      }
+
+      // Increment/decrement operators (++, --): 1 point
+      if (/(\+\+|--)/.test(line)) {
+        score += 1;
+      }
+
+      // Compound assignment operators (+=, -=, *=, /=, %=): 2 points
+      if (/(\+=|-=|\*=|\/=|%=)/.test(line)) {
+        score += 2;
+      }
+
+      // Regular assignment: 1 point
+      if (/^\w+\s*=\s*[^=]/.test(line) && !/(\+=|-=|\*=|\/=|%=)/.test(line)) {
+        score += 1;
+      }
+
+      // Arithmetic operations (+, -, *, /, %): 1 point each
+      const arithmeticOps = line.match(/[+\-*\/%](?![+=])/g);
+      if (arithmeticOps) {
+        // Don't count compound operators twice
+        const validOps = arithmeticOps.filter(op => {
+          const index = line.indexOf(op);
+          return index === -1 || line[index + 1] !== '=';
+        });
+        score += validOps.length * 1;
+      }
+
+      // System.out.println: 2 points
+      if (/System\.out\.println/.test(line)) {
+        score += 2;
+      }
+
+      return score;
     }
   </script>
 </head>
