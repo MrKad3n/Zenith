@@ -62,18 +62,92 @@
     #codeArea {
       flex: 1;
       background-color: #1a1a1a;
-      color: #00ff00;
+      color: #d4d4d4;
       border: 2px solid #28a745;
       border-radius: 5px;
       padding: 15px;
       font-family: 'Courier New', monospace;
       font-size: 14px;
-      resize: none;
       overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      outline: none;
+      line-height: 1.5;
+    }
+
+    #codeArea:empty:before {
+      content: attr(data-placeholder);
+      color: #666;
+    }
+
+
+    /* Syntax highlighting colors */
+    .keyword {
+      color: #569cd6;
+      font-weight: bold;
+    }
+
+    .function {
+      color: #dcdcaa;
+    }
+
+    .string {
+      color: #ce9178;
+    }
+
+    .comment {
+      color: #6a9955;
+      font-style: italic;
+    }
+
+    .number {
+      color: #b5cea8;
+    }
+
+    .operator {
+      color: #d4d4d4;
+    }
+
+    .type {
+      color: #4ec9b0;
     }
 
     #codeArea::placeholder {
       color: #666;
+    }
+
+
+    /* Console Output Area */
+    #consoleOutput {
+      background-color: #1a1a1a;
+      color: #00ff00;
+      border: 2px solid #28a745;
+      border-radius: 5px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+
+    #consoleOutput h3 {
+      color: #28a745;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .console-line {
+      margin: 2px 0;
+      color: #00ff00;
+    }
+
+    .console-error {
+      color: #ff6b6b;
+    }
+
+    .console-info {
+      color: #4dabf7;
     }
 
     /* Game Area - Center */
@@ -307,11 +381,77 @@
   </style>
   <script>
     // Supported functions and operations
-    const ALLOWED_FUNCTIONS = ['moveLeft', 'moveRight', 'attack', 'defend', 'heal'];
+    const ALLOWED_FUNCTIONS = ['moveLeft', 'moveRight', 'attack', 'defend', 'heal', 'attackEnemySlotOne', 'attackEnemySlotTwo', 'attackEnemySlotThree'];
     const JAVA_KEYWORDS = ['if', 'else', 'for', 'while', 'class', 'public', 'private', 'void', 'int', 'return'];
+
+    // Game state
+    let gameState = {
+      playerHP: 100,
+      enemyHP: 100,
+      playerPosition: 2, // 1, 2, or 3
+      enemyPosition: 2,
+      defending: false,
+      console: [],
+      complexityScore: 0
+    };
+
+    // Variable storage for code execution
+    let variables = {};
 
     // Wait for DOM to load before attaching event listeners
     document.addEventListener('DOMContentLoaded', () => {
+      const codeArea = document.getElementById('codeArea');
+      let preventHighlighting = false;
+      
+      // Initialize syntax highlighting
+      codeArea.addEventListener('input', () => {
+        if (!preventHighlighting) {
+          applySyntaxHighlighting();
+        }
+      });
+      
+      codeArea.addEventListener('keydown', (e) => {
+        console.log('Key pressed:', e.key);
+        
+        // Handle tab key
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          console.log('Tab key handled');
+          document.execCommand('insertText', false, '  ');
+        }
+        
+        // Handle enter key
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          console.log('Enter key pressed, inserting line break');
+          
+          // Temporarily disable highlighting
+          preventHighlighting = true;
+          
+          // Insert a newline in the text content
+          const selection = window.getSelection();
+          const range = selection.getRangeAt(0);
+          range.deleteContents();
+          
+          const br = document.createElement('br');
+          range.insertNode(br);
+          range.setStartAfter(br);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          console.log('After insert, innerHTML:', codeArea.innerHTML);
+          
+          // Re-enable highlighting and apply it
+          setTimeout(() => {
+            preventHighlighting = false;
+            applySyntaxHighlighting();
+          }, 10);
+          
+          return false;
+        }
+      });
+
       // Exit button functionality
       document.getElementById('exitButton').addEventListener('click', () => {
         window.location.href = 'index.html';
@@ -319,7 +459,7 @@
 
       // Code validation and execution
       document.getElementById('runCodeButton').addEventListener('click', () => {
-        const code = document.getElementById('codeArea').value.trim();
+        const code = getCodeText();
         
         if (!code) {
           alert('Please enter some code first!');
@@ -332,11 +472,202 @@
           
           // Parse and execute supported operations
           executeJavaCode(code);
+          
+          // Clear the code area after successful execution
+          document.getElementById('codeArea').innerHTML = '';
         } catch (error) {
           alert('Error: ' + error.message);
         }
       });
     });
+
+    function getCodeText() {
+      return document.getElementById('codeArea').textContent.trim();
+    }
+
+    function applySyntaxHighlighting() {
+      const codeArea = document.getElementById('codeArea');
+      const cursorPos = saveCursorPosition(codeArea);
+      
+      console.log('applySyntaxHighlighting called, cursor at:', cursorPos);
+      
+      // Convert innerHTML to text, preserving line breaks
+      let tempDiv = document.createElement('div');
+      tempDiv.innerHTML = codeArea.innerHTML;
+      
+      // Replace <br> with newlines before getting text
+      tempDiv.querySelectorAll('br').forEach(br => {
+        br.replaceWith('\n');
+      });
+      
+      let code = tempDiv.textContent || tempDiv.innerText || '';
+      
+      console.log('Current code:', code);
+      console.log('Code length:', code.length);
+      
+      if (!code) {
+        codeArea.innerHTML = '';
+        return;
+      }
+      
+      const highlighted = highlightJavaCode(code);
+      
+      console.log('Highlighted HTML:', highlighted);
+      
+      // Always update to ensure proper rendering
+      codeArea.innerHTML = highlighted;
+      console.log('innerHTML updated');
+      
+      restoreCursorPosition(codeArea, cursorPos);
+      console.log('Cursor restored to:', cursorPos);
+    }
+
+    function highlightJavaCode(code) {
+      const lines = code.split('\n');
+      const highlightedLines = [];
+      
+      for (let line of lines) {
+        // Empty lines should just be empty, not <br>
+        if (!line) {
+          highlightedLines.push('');
+          continue;
+        }
+        
+        // Highlight comments first
+        if (line.trim().startsWith('//')) {
+          let highlighted = '<span class="comment">' + safeEscape(line) + '</span>';
+          highlightedLines.push(highlighted);
+          continue;
+        }
+        
+        // Escape special characters first
+        let highlighted = safeEscape(line);
+        
+        // Create an array to track what's been highlighted
+        // We'll use a placeholder system to prevent double-highlighting
+        const tokens = [];
+        let tokenId = 0;
+        
+        // Highlight strings first (highest priority)
+        highlighted = highlighted.replace(/&quot;([^&quot;]*)&quot;/g, function(match, p1) {
+          const token = `__TOKEN_${tokenId}__`;
+          tokens.push({ token, html: '<span class="string">&quot;' + p1 + '&quot;</span>' });
+          tokenId++;
+          return token;
+        });
+        
+        // Highlight types
+        highlighted = highlighted.replace(/\b(int|String|boolean|double|float|void)\b/g, function(match) {
+          const token = `__TOKEN_${tokenId}__`;
+          tokens.push({ token, html: '<span class="type">' + match + '</span>' });
+          tokenId++;
+          return token;
+        });
+        
+        // Highlight keywords
+        highlighted = highlighted.replace(/\b(if|else|for|while|return|public|private|class)\b/g, function(match) {
+          const token = `__TOKEN_${tokenId}__`;
+          tokens.push({ token, html: '<span class="keyword">' + match + '</span>' });
+          tokenId++;
+          return token;
+        });
+        
+        // Highlight function calls
+        highlighted = highlighted.replace(/\b(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree|println)\b/g, function(match) {
+          const token = `__TOKEN_${tokenId}__`;
+          tokens.push({ token, html: '<span class="function">' + match + '</span>' });
+          tokenId++;
+          return token;
+        });
+        
+        // Highlight numbers
+        highlighted = highlighted.replace(/\b(\d+)\b/g, function(match) {
+          const token = `__TOKEN_${tokenId}__`;
+          tokens.push({ token, html: '<span class="number">' + match + '</span>' });
+          tokenId++;
+          return token;
+        });
+        
+        // Highlight operators
+        highlighted = highlighted.replace(/(\+\+|--|&lt;=|&gt;=|==|!=|&amp;&amp;|\|\||&lt;|&gt;|\+=|-=|\*=|\/=|%=)/g, function(match) {
+          const token = `__TOKEN_${tokenId}__`;
+          tokens.push({ token, html: '<span class="operator">' + match + '</span>' });
+          tokenId++;
+          return token;
+        });
+        
+        // Replace all tokens with their HTML
+        tokens.forEach(item => {
+          highlighted = highlighted.replace(item.token, item.html);
+        });
+        
+        highlightedLines.push(highlighted);
+      }
+      
+      // Join lines with <br> - empty lines will naturally create double <br> (one for each side)
+      // But we want single <br> for line breaks, so we need to handle this carefully
+      let result = '';
+      for (let i = 0; i < highlightedLines.length; i++) {
+        result += highlightedLines[i] || '&nbsp;'; // Use nbsp for truly empty lines to preserve them
+        if (i < highlightedLines.length - 1) {
+          result += '<br>';
+        }
+      }
+      return result;
+    }
+
+    function safeEscape(text) {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/  /g, '&nbsp;&nbsp;');
+    }
+
+    function saveCursorPosition(element) {
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) return 0;
+      
+      const range = selection.getRangeAt(0);
+      const preCaretRange = range.cloneRange();
+      preCaretRange.selectNodeContents(element);
+      preCaretRange.setEnd(range.endContainer, range.endOffset);
+      
+      return preCaretRange.toString().length;
+    }
+
+    function restoreCursorPosition(element, position) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      
+      let charCount = 0;
+      let nodeStack = [element];
+      let node, foundNode, foundOffset;
+      
+      while (node = nodeStack.pop()) {
+        if (node.nodeType === 3) {
+          const nextCharCount = charCount + node.length;
+          if (!foundNode && position >= charCount && position <= nextCharCount) {
+            foundNode = node;
+            foundOffset = position - charCount;
+          }
+          charCount = nextCharCount;
+        } else {
+          let i = node.childNodes.length;
+          while (i--) {
+            nodeStack.push(node.childNodes[i]);
+          }
+        }
+      }
+      
+      if (foundNode) {
+        range.setStart(foundNode, foundOffset);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
 
     function validateJavaCode(code) {
       const lines = code.split('\n');
@@ -409,7 +740,7 @@
       if (line.startsWith('//') || line.startsWith('/*') || line.endsWith('*/')) return true;
 
       // Allow function calls with semicolon
-      const functionCallPattern = /^(moveLeft|moveRight|attack|defend|heal)\(\);$/;
+      const functionCallPattern = /^(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree)\(\);$/;
       if (functionCallPattern.test(line)) return true;
 
       // Allow System.out.println
@@ -455,64 +786,384 @@
     }
 
     function executeJavaCode(code) {
+      // Reset game state and variables
+      variables = {};
+      gameState.console = [];
+      gameState.defending = false;
+      
       const lines = code.split('\n');
-      const executedFunctions = [];
-      let ifCondition = true;
-      let depth = 0;
       let score = 0;
-
-      for (let line of lines) {
-        const trimmedLine = line.trim();
-        
-        // Skip empty lines and comments
-        if (!trimmedLine || trimmedLine.startsWith('//')) continue;
-
-        // Calculate score for this line
-        score += calculateLineScore(trimmedLine);
-
-        // Handle braces for depth tracking
-        const openBraces = (trimmedLine.match(/\{/g) || []).length;
-        const closeBraces = (trimmedLine.match(/\}/g) || []).length;
-        
-        if (closeBraces > 0) depth--;
-
-        // Handle if statements
-        if (trimmedLine.startsWith('if')) {
-          ifCondition = evaluateJavaCondition(trimmedLine);
-          depth++;
-          continue;
-        }
-
-        // Handle else/else if
-        if (trimmedLine.startsWith('else')) {
-          ifCondition = !ifCondition;
-          depth++;
-          continue;
-        }
-
-        // Handle for loops
-        if (trimmedLine.startsWith('for')) {
-          depth++;
-          continue;
-        }
-
-        // Execute function calls only if condition is true and at proper depth
-        if (depth > 0 || ifCondition) {
-          const functionMatch = trimmedLine.match(/^(moveLeft|moveRight|attack|defend|heal)\(\);$/);
-          if (functionMatch) {
-            executedFunctions.push(functionMatch[1]);
+      
+      try {
+        // Calculate score first
+        for (let line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine && !trimmedLine.startsWith('//')) {
+            score += calculateLineScore(trimmedLine);
           }
         }
-
-        if (openBraces > 0) depth++;
+        
+        // Store score in game state
+        gameState.complexityScore = score;
+        
+        // Parse and execute code
+        executeBlock(lines, 0, lines.length);
+        
+        // Update UI
+        updateGameUI();
+        displayConsole();
+        
+        // Calculate damage potential
+        const damageCalc = calculateDamage(score);
+        
+        // Show success message
+        consoleLog('\n--- Execution Complete ---', 'info');
+        consoleLog('Complexity Score: ' + score + ' points', 'info');
+        consoleLog('Attack Damage: ' + damageCalc.toFixed(1) + ' HP', 'info');
+        
+      } catch (error) {
+        consoleLog('Runtime Error: ' + error.message, 'error');
+        displayConsole();
       }
+    }
 
-      // Show success alert with executed actions and score
-      if (executedFunctions.length > 0) {
-        alert('Code executed successfully!\nActions: ' + executedFunctions.join(', ') + '\n\nComplexity Score: ' + score + ' points');
+    function executeBlock(lines, start, end) {
+      let i = start;
+      
+      while (i < end) {
+        let line = lines[i].trim();
+        
+        // Skip empty lines and comments
+        if (!line || line.startsWith('//')) {
+          i++;
+          continue;
+        }
+        
+        // Handle if statements
+        if (line.startsWith('if')) {
+          const result = executeIfStatement(lines, i);
+          i = result.nextLine;
+          continue;
+        }
+        
+        // Handle for loops
+        if (line.startsWith('for')) {
+          const result = executeForLoop(lines, i);
+          i = result.nextLine;
+          continue;
+        }
+        
+        // Handle while loops
+        if (line.startsWith('while')) {
+          const result = executeWhileLoop(lines, i);
+          i = result.nextLine;
+          continue;
+        }
+        
+        // Execute single statement
+        executeLine(line);
+        i++;
+      }
+    }
+
+    function executeLine(line) {
+      // Remove trailing semicolon and braces
+      line = line.replace(/[;{}]/g, '').trim();
+      if (!line) return;
+      
+      // Variable declaration
+      const varDeclMatch = line.match(/^(int|String|boolean|double|float)\s+(\w+)\s*=\s*(.+)$/);
+      if (varDeclMatch) {
+        const varName = varDeclMatch[2];
+        const value = evaluateExpression(varDeclMatch[3]);
+        variables[varName] = value;
+        return;
+      }
+      
+      // Variable declaration without assignment
+      const varDeclOnlyMatch = line.match(/^(int|String|boolean|double|float)\s+(\w+)$/);
+      if (varDeclOnlyMatch) {
+        variables[varDeclOnlyMatch[2]] = 0;
+        return;
+      }
+      
+      // Increment/decrement
+      const incDecMatch = line.match(/^(\+\+|--)(\w+)$|^(\w+)(\+\+|--)$/);
+      if (incDecMatch) {
+        const varName = incDecMatch[2] || incDecMatch[3];
+        const op = incDecMatch[1] || incDecMatch[4];
+        if (variables[varName] !== undefined) {
+          variables[varName] += (op === '++' ? 1 : -1);
+        }
+        return;
+      }
+      
+      // Compound assignment
+      const compoundMatch = line.match(/^(\w+)\s*(\+=|-=|\*=|\/=|%=)\s*(.+)$/);
+      if (compoundMatch) {
+        const varName = compoundMatch[1];
+        const op = compoundMatch[2];
+        const value = evaluateExpression(compoundMatch[3]);
+        
+        if (variables[varName] !== undefined) {
+          switch(op) {
+            case '+=': variables[varName] += value; break;
+            case '-=': variables[varName] -= value; break;
+            case '*=': variables[varName] *= value; break;
+            case '/=': variables[varName] /= value; break;
+            case '%=': variables[varName] %= value; break;
+          }
+        }
+        return;
+      }
+      
+      // Regular assignment
+      const assignMatch = line.match(/^(\w+)\s*=\s*(.+)$/);
+      if (assignMatch) {
+        const varName = assignMatch[1];
+        const value = evaluateExpression(assignMatch[2]);
+        variables[varName] = value;
+        return;
+      }
+      
+      // System.out.println
+      const printMatch = line.match(/^System\.out\.println\((.*)\)$/);
+      if (printMatch) {
+        const content = printMatch[1].trim();
+        let output = '';
+        
+        if (content.startsWith('"') && content.endsWith('"')) {
+          output = content.slice(1, -1);
+        } else {
+          output = evaluateExpression(content);
+        }
+        
+        consoleLog(output);
+        return;
+      }
+      
+      // Function calls
+      const funcMatch = line.match(/^(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree)\(\)$/);
+      if (funcMatch) {
+        executeGameFunction(funcMatch[1]);
+        return;
+      }
+    }
+
+    function executeIfStatement(lines, startIndex) {
+      const ifLine = lines[startIndex].trim();
+      const conditionMatch = ifLine.match(/if\s*\((.+)\)/);
+      const condition = evaluateExpression(conditionMatch[1]);
+      
+      // Find the block
+      const blockStart = startIndex + 1;
+      let blockEnd = findBlockEnd(lines, startIndex);
+      
+      if (condition) {
+        executeBlock(lines, blockStart, blockEnd);
+      }
+      
+      // Check for else
+      let nextLine = blockEnd;
+      if (nextLine < lines.length && lines[nextLine].trim().startsWith('else')) {
+        const elseEnd = findBlockEnd(lines, nextLine);
+        if (!condition) {
+          executeBlock(lines, nextLine + 1, elseEnd);
+        }
+        return { nextLine: elseEnd };
+      }
+      
+      return { nextLine: blockEnd };
+    }
+
+    function executeForLoop(lines, startIndex) {
+      const forLine = lines[startIndex].trim();
+      const forMatch = forLine.match(/for\s*\((.+)\)/);
+      
+      if (forMatch) {
+        const parts = forMatch[1].split(';').map(p => p.trim());
+        if (parts.length === 3) {
+          // Init
+          executeLine(parts[0]);
+          
+          // Find loop block
+          const blockStart = startIndex + 1;
+          const blockEnd = findBlockEnd(lines, startIndex);
+          
+          // Execute loop
+          let iterations = 0;
+          const maxIterations = 1000; // Safety limit
+          
+          while (evaluateExpression(parts[1]) && iterations < maxIterations) {
+            executeBlock(lines, blockStart, blockEnd);
+            executeLine(parts[2]);
+            iterations++;
+          }
+          
+          return { nextLine: blockEnd };
+        }
+      }
+      
+      return { nextLine: findBlockEnd(lines, startIndex) };
+    }
+
+    function executeWhileLoop(lines, startIndex) {
+      const whileLine = lines[startIndex].trim();
+      const conditionMatch = whileLine.match(/while\s*\((.+)\)/);
+      
+      if (conditionMatch) {
+        const blockStart = startIndex + 1;
+        const blockEnd = findBlockEnd(lines, startIndex);
+        
+        let iterations = 0;
+        const maxIterations = 1000;
+        
+        while (evaluateExpression(conditionMatch[1]) && iterations < maxIterations) {
+          executeBlock(lines, blockStart, blockEnd);
+          iterations++;
+        }
+        
+        return { nextLine: blockEnd };
+      }
+      
+      return { nextLine: findBlockEnd(lines, startIndex) };
+    }
+
+    function findBlockEnd(lines, startIndex) {
+      let depth = 0;
+      let i = startIndex;
+      
+      // Check if the starting line has an opening brace
+      if (lines[i].includes('{')) depth++;
+      i++;
+      
+      while (i < lines.length && depth > 0) {
+        const line = lines[i].trim();
+        if (line.includes('{')) depth++;
+        if (line.includes('}')) depth--;
+        i++;
+      }
+      
+      return i;
+    }
+
+    function evaluateExpression(expr) {
+      expr = expr.trim();
+      
+      // String literal
+      if (expr.startsWith('"') && expr.endsWith('"')) {
+        return expr.slice(1, -1);
+      }
+      
+      // Boolean literal
+      if (expr === 'true') return true;
+      if (expr === 'false') return false;
+      
+      // Replace variables with their values
+      for (let varName in variables) {
+        const regex = new RegExp('\\b' + varName + '\\b', 'g');
+        expr = expr.replace(regex, variables[varName]);
+      }
+      
+      // Evaluate
+      try {
+        return eval(expr);
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function executeGameFunction(funcName) {
+      switch(funcName) {
+        case 'moveLeft':
+          if (gameState.playerPosition > 1) {
+            gameState.playerPosition--;
+            consoleLog('Player moved left to position ' + gameState.playerPosition, 'info');
+          }
+          break;
+        case 'moveRight':
+          if (gameState.playerPosition < 3) {
+            gameState.playerPosition++;
+            consoleLog('Player moved right to position ' + gameState.playerPosition, 'info');
+          }
+          break;
+        case 'attack':
+          // Check if player and enemy are in the same position
+          if (gameState.playerPosition === gameState.enemyPosition) {
+            const baseDamage = calculateDamage(gameState.complexityScore);
+            const damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
+            gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+            consoleLog('Player attacks! Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+          } else {
+            consoleLog('Attack missed! Enemy is not across from you. (Player: P' + gameState.playerPosition + ', Enemy: E' + gameState.enemyPosition + ')', 'error');
+          }
+          break;
+        case 'attackEnemySlotOne':
+          performTargetedAttack(1);
+          break;
+        case 'attackEnemySlotTwo':
+          performTargetedAttack(2);
+          break;
+        case 'attackEnemySlotThree':
+          performTargetedAttack(3);
+          break;
+        case 'defend':
+          gameState.defending = true;
+          consoleLog('Player is defending! (damage reduced)', 'info');
+          break;
+        case 'heal':
+          const healAmount = calculateHeal(gameState.complexityScore);
+          gameState.playerHP = Math.min(100, gameState.playerHP + healAmount);
+          consoleLog('Player heals ' + healAmount.toFixed(1) + ' HP. Current HP: ' + gameState.playerHP.toFixed(1), 'info');
+          break;
+      }
+    }
+
+    function performTargetedAttack(targetSlot) {
+      if (gameState.enemyPosition === targetSlot) {
+        const baseDamage = calculateDamage(gameState.complexityScore);
+        const damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
+        gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+        consoleLog('Player targets enemy slot ' + targetSlot + '! Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
       } else {
-        alert('Code validated successfully!\nComplexity Score: ' + score + ' points');
+        consoleLog('Targeted attack missed! Enemy is not in slot ' + targetSlot + '. (Enemy is in E' + gameState.enemyPosition + ')', 'error');
       }
+    }
+
+    function consoleLog(message, type = 'normal') {
+      gameState.console.push({ message: String(message), type: type });
+    }
+
+    function displayConsole() {
+      const consoleDiv = document.getElementById('consoleContent');
+      consoleDiv.innerHTML = '';
+      
+      gameState.console.forEach(log => {
+        const line = document.createElement('div');
+        line.className = 'console-line';
+        if (log.type === 'error') line.className += ' console-error';
+        if (log.type === 'info') line.className += ' console-info';
+        line.textContent = log.message;
+        consoleDiv.appendChild(line);
+      });
+      
+      // Auto-scroll to bottom
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    function updateGameUI() {
+      // Update HP bars
+      document.getElementById('playerHPFill').style.width = gameState.playerHP + '%';
+      document.getElementById('enemyHPFill').style.width = gameState.enemyHP + '%';
+      
+      // Update positions
+      document.querySelectorAll('#playerPositions .slot').forEach((slot, index) => {
+        slot.style.backgroundColor = (index + 1 === gameState.playerPosition) ? '#4dabf7' : '#1a1a1a';
+      });
+      
+      document.querySelectorAll('#enemyPositions .slot').forEach((slot, index) => {
+        slot.style.backgroundColor = (index + 1 === gameState.enemyPosition) ? '#ff6b6b' : '#1a1a1a';
+      });
     }
 
     function evaluateJavaCondition(line) {
@@ -527,6 +1178,18 @@
       } catch (e) {
         return true; // Default to true if evaluation fails
       }
+    }
+
+    function calculateDamage(score) {
+      // Damage formula: f(x) = 0.1x^1.3 + 2
+      if (score === 0) return 2; // Minimum damage
+      return 0.1 * Math.pow(score, 1.3) + 4;
+    }
+
+    function calculateHeal(score) {
+      // Heal formula: f(x) = 0.05x^1.3 + 2
+      if (score === 0) return 2; // Minimum heal
+      return 0.05 * Math.pow(score, 1.3) + 2;
     }
 
     function calculateLineScore(line) {
@@ -566,6 +1229,11 @@
       // Function calls: 3 points each
       if (/(moveLeft|moveRight|attack|defend|heal)\(\)/.test(line)) {
         score += 3;
+      }
+
+      // Targeted attack functions: 2 points each (lower score, easier to use)
+      if (/(attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree)\(\)/.test(line)) {
+        score += 2;
       }
 
       // Increment/decrement operators (++, --): 1 point
@@ -609,7 +1277,11 @@
         <h2>Code Input</h2>
         <button id="runCodeButton">Run Code</button>
     </div>
-    <textarea id="codeArea" placeholder="Write your Java code here..."></textarea>
+    <div id="codeArea" contenteditable="true" data-placeholder="Write your Java code here..."></div>
+    <div id="consoleOutput">
+      <h3>Console Output:</h3>
+      <div id="consoleContent"></div>
+    </div>
   </aside>
   <section id="gameArea">
     <div id="enemySection">
