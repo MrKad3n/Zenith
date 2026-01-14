@@ -382,7 +382,7 @@
   <script>
     // Supported functions and operations
     const ALLOWED_FUNCTIONS = ['moveLeft', 'moveRight', 'attack', 'defend', 'heal', 'attackEnemySlotOne', 'attackEnemySlotTwo', 'attackEnemySlotThree'];
-    const JAVA_KEYWORDS = ['if', 'else', 'for', 'while', 'class', 'public', 'private', 'void', 'int', 'return'];
+    const JAVA_KEYWORDS = ['if', 'else', 'for', 'while', 'class', 'public', 'private', 'void', 'int', 'return', 'break', 'continue', 'do'];
 
     // Game state
     let gameState = {
@@ -395,15 +395,52 @@
       complexityScore: 0
     };
 
-    // Variable storage for code execution
-    let variables = {};
+    // Variable storage for code execution with scoping
+    let variableScopes = [{}]; // Stack of scopes
+    let breakFlag = false;
+    let continueFlag = false;
+    
+    // Helper for variable access with scope chain
+    function getVariable(name) {
+      for (let i = variableScopes.length - 1; i >= 0; i--) {
+        if (variableScopes[i].hasOwnProperty(name)) {
+          return variableScopes[i][name];
+        }
+      }
+      return undefined;
+    }
+    
+    function setVariable(name, value, declare = false) {
+      if (declare) {
+        variableScopes[variableScopes.length - 1][name] = value;
+      } else {
+        // Find the variable in scope chain and update it
+        for (let i = variableScopes.length - 1; i >= 0; i--) {
+          if (variableScopes[i].hasOwnProperty(name)) {
+            variableScopes[i][name] = value;
+            return;
+          }
+        }
+        // If not found, create in current scope
+        variableScopes[variableScopes.length - 1][name] = value;
+      }
+    }
+    
+    function pushScope() {
+      variableScopes.push({});
+    }
+    
+    function popScope() {
+      if (variableScopes.length > 1) {
+        variableScopes.pop();
+      }
+    }
 
     // Wait for DOM to load before attaching event listeners
     document.addEventListener('DOMContentLoaded', () => {
       const codeArea = document.getElementById('codeArea');
-      let preventHighlighting = false;
       
-      // Initialize syntax highlighting
+      // Initialize syntax highlighting (using global preventHighlighting flag)
       codeArea.addEventListener('input', () => {
         if (!preventHighlighting) {
           applySyntaxHighlighting();
@@ -411,40 +448,36 @@
       });
       
       codeArea.addEventListener('keydown', (e) => {
-        console.log('Key pressed:', e.key);
-        
         // Handle tab key
         if (e.key === 'Tab') {
           e.preventDefault();
-          console.log('Tab key handled');
           document.execCommand('insertText', false, '  ');
+          return false;
         }
         
-        // Handle enter key
+        // Handle enter key - insert <br> and position cursor
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
-          console.log('Enter key pressed, inserting line break');
           
-          // Temporarily disable highlighting
-          preventHighlighting = true;
-          
-          // Insert a newline in the text content
+          // Get current selection
           const selection = window.getSelection();
-          const range = selection.getRangeAt(0);
-          range.deleteContents();
+          if (selection.rangeCount === 0) return false;
           
+          const range = selection.getRangeAt(0);
+          
+          // Create a br element and insert it
           const br = document.createElement('br');
           range.insertNode(br);
-          range.setStartAfter(br);
+          
+          // Move cursor after the br
+          range.setStart(br.nextSibling || codeArea, 0);
           range.collapse(true);
+          
           selection.removeAllRanges();
           selection.addRange(range);
           
-          console.log('After insert, innerHTML:', codeArea.innerHTML);
-          
-          // Re-enable highlighting and apply it
+          // Trigger syntax highlighting
           setTimeout(() => {
-            preventHighlighting = false;
             applySyntaxHighlighting();
           }, 10);
           
@@ -477,49 +510,83 @@
           document.getElementById('codeArea').innerHTML = '';
         } catch (error) {
           alert('Error: ' + error.message);
+          consoleLog('Error: ' + error.message, 'error');
+          displayConsole();
         }
       });
     });
 
     function getCodeText() {
-      return document.getElementById('codeArea').textContent.trim();
-    }
-
-    function applySyntaxHighlighting() {
       const codeArea = document.getElementById('codeArea');
-      const cursorPos = saveCursorPosition(codeArea);
       
-      console.log('applySyntaxHighlighting called, cursor at:', cursorPos);
+      // Clone the element to avoid modifying the original
+      const clone = codeArea.cloneNode(true);
       
-      // Convert innerHTML to text, preserving line breaks
-      let tempDiv = document.createElement('div');
-      tempDiv.innerHTML = codeArea.innerHTML;
-      
-      // Replace <br> with newlines before getting text
-      tempDiv.querySelectorAll('br').forEach(br => {
+      // Replace all <br> tags with newlines
+      const brs = clone.querySelectorAll('br');
+      brs.forEach(br => {
         br.replaceWith('\n');
       });
       
-      let code = tempDiv.textContent || tempDiv.innerText || '';
+      // Replace <div> with newlines (some browsers use divs for line breaks)
+      const divs = clone.querySelectorAll('div');
+      divs.forEach(div => {
+        div.before('\n');
+      });
       
-      console.log('Current code:', code);
-      console.log('Code length:', code.length);
+      // Get the text content
+      let text = clone.textContent || clone.innerText || '';
+      
+      // Clean up any excessive whitespace but preserve intentional line breaks
+      return text.trim();
+    }
+
+    // Flag to prevent recursive syntax highlighting calls
+    let isHighlighting = false;
+    // Flag to prevent input event from triggering syntax highlighting
+    let preventHighlighting = false;
+
+    function applySyntaxHighlighting() {
+      if (isHighlighting) {
+        return;
+      }
+      
+      isHighlighting = true;
+      preventHighlighting = true;
+      const codeArea = document.getElementById('codeArea');
+      
+      // Clone and convert <br> tags to newlines to preserve structure
+      const clone = codeArea.cloneNode(true);
+      const brs = clone.querySelectorAll('br');
+      brs.forEach(br => br.replaceWith('\n'));
+      
+      // Get text content with line breaks preserved
+      let code = clone.textContent || '';
       
       if (!code) {
         codeArea.innerHTML = '';
+        isHighlighting = false;
+        preventHighlighting = false;
         return;
       }
       
       const highlighted = highlightJavaCode(code);
-      
-      console.log('Highlighted HTML:', highlighted);
-      
-      // Always update to ensure proper rendering
       codeArea.innerHTML = highlighted;
-      console.log('innerHTML updated');
       
-      restoreCursorPosition(codeArea, cursorPos);
-      console.log('Cursor restored to:', cursorPos);
+      // Move cursor to end of content
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(codeArea);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      isHighlighting = false;
+      
+      // Re-enable input event listener after a short delay
+      setTimeout(() => {
+        preventHighlighting = false;
+      }, 50);
     }
 
     function highlightJavaCode(code) {
@@ -557,7 +624,7 @@
         });
         
         // Highlight types
-        highlighted = highlighted.replace(/\b(int|String|boolean|double|float|void)\b/g, function(match) {
+        highlighted = highlighted.replace(/\b(int|String|boolean|double|float|void|long|short|byte|char)\b/g, function(match) {
           const token = `__TOKEN_${tokenId}__`;
           tokens.push({ token, html: '<span class="type">' + match + '</span>' });
           tokenId++;
@@ -565,7 +632,7 @@
         });
         
         // Highlight keywords
-        highlighted = highlighted.replace(/\b(if|else|for|while|return|public|private|class)\b/g, function(match) {
+        highlighted = highlighted.replace(/\b(if|else|for|while|do|return|public|private|class|break|continue|new|true|false|null)\b/g, function(match) {
           const token = `__TOKEN_${tokenId}__`;
           tokens.push({ token, html: '<span class="keyword">' + match + '</span>' });
           tokenId++;
@@ -604,11 +671,10 @@
         highlightedLines.push(highlighted);
       }
       
-      // Join lines with <br> - empty lines will naturally create double <br> (one for each side)
-      // But we want single <br> for line breaks, so we need to handle this carefully
+      // Join lines with <br>
       let result = '';
       for (let i = 0; i < highlightedLines.length; i++) {
-        result += highlightedLines[i] || '&nbsp;'; // Use nbsp for truly empty lines to preserve them
+        result += highlightedLines[i]; // Don't add &nbsp; for empty lines - keep them truly empty
         if (i < highlightedLines.length - 1) {
           result += '<br>';
         }
@@ -750,28 +816,43 @@
       // Allow if statements
       const ifPattern = /^if\s*\(.*\)\s*\{?$/;
       if (ifPattern.test(line)) return true;
+      
+      // Allow single-line if with statement (like "if (x) continue;")
+      const singleLineIfPattern = /^if\s*\(.*\)\s+\w+.*;?$/;
+      if (singleLineIfPattern.test(line)) return true;
 
-      // Allow else/else if
-      const elsePattern = /^else\s*(if\s*\(.*\))?\s*\{?$/;
+      // Allow else/else if (including with closing brace before it like "} else if")
+      const elsePattern = /^(\}\s*)?else\s*(if\s*\(.*\))?\s*\{?$/;
       if (elsePattern.test(line)) return true;
 
-      // Allow for loops
+      // Allow for loops (including enhanced for)
       const forPattern = /^for\s*\(.*\)\s*\{?$/;
       if (forPattern.test(line)) return true;
 
       // Allow while loops
       const whilePattern = /^while\s*\(.*\)\s*\{?$/;
       if (whilePattern.test(line)) return true;
+      
+      // Allow do-while loops
+      const doPattern = /^do\s*\{?$/;
+      if (doPattern.test(line)) return true;
+      
+      // Allow do-while end
+      const doWhileEndPattern = /^\}\s*while\s*\(.*\);$/;
+      if (doWhileEndPattern.test(line)) return true;
 
-      // Allow braces
+      // Allow braces (including closing brace before keywords)
       if (line === '{' || line === '}') return true;
+      
+      // Allow closing brace at start of line (like "} else")
+      if (line.startsWith('}')) return true;
 
-      // Allow variable declarations
-      const varPattern = /^(int|String|boolean|double|float)\s+\w+\s*(=\s*.*)?;?$/;
+      // Allow variable declarations (including arrays)
+      const varPattern = /^(int|String|boolean|double|float|long|short|byte|char)((\[\])+)?\s+\w+(\[\])?\s*(=\s*.*)?;?$/;
       if (varPattern.test(line)) return true;
 
       // Allow simple assignments
-      const assignPattern = /^\w+\s*=\s*.+;?$/;
+      const assignPattern = /^\w+(\[\w+\])?\s*=\s*.+;?$/;
       if (assignPattern.test(line)) return true;
 
       // Allow compound assignments (+=, -=, *=, /=, %=)
@@ -781,13 +862,26 @@
       // Allow increment/decrement operators (++, --)
       const incrementPattern = /^(\+\+\w+|\w+\+\+|--\w+|\w+--)\s*;?$/;
       if (incrementPattern.test(line)) return true;
+      
+      // Allow break and continue
+      if (line === 'break;' || line === 'continue;') return true;
+      
+      // Allow array initialization
+      const arrayInitPattern = /^new\s+(int|String|boolean|double|float)\[.*\];?$/;
+      if (arrayInitPattern.test(line)) return true;
+      
+      // Allow method calls
+      const methodCallPattern = /^\w+\(.*\);?$/;
+      if (methodCallPattern.test(line)) return true;
 
       return false;
     }
 
     function executeJavaCode(code) {
       // Reset game state and variables
-      variables = {};
+      variableScopes = [{}];
+      breakFlag = false;
+      continueFlag = false;
       gameState.console = [];
       gameState.defending = false;
       
@@ -802,6 +896,8 @@
             score += calculateLineScore(trimmedLine);
           }
         }
+        
+        console.log('Calculated score:', score);
         
         // Store score in game state
         gameState.complexityScore = score;
@@ -828,62 +924,112 @@
     }
 
     function executeBlock(lines, start, end) {
+      console.log(`executeBlock: start=${start}, end=${end}`);
       let i = start;
       
-      while (i < end) {
+      while (i < end && !breakFlag && !continueFlag) {
         let line = lines[i].trim();
+        console.log(`Line ${i}: "${line}"`);
         
         // Skip empty lines and comments
         if (!line || line.startsWith('//')) {
+          console.log('  -> Skipping empty/comment line');
           i++;
           continue;
         }
         
-        // Handle if statements
+        // Handle if statements (including else-if chains)
         if (line.startsWith('if')) {
+          console.log('  -> Executing IF statement');
           const result = executeIfStatement(lines, i);
+          console.log('  -> IF completed, next line:', result.nextLine);
           i = result.nextLine;
           continue;
         }
         
         // Handle for loops
         if (line.startsWith('for')) {
+          console.log('  -> Executing FOR loop');
           const result = executeForLoop(lines, i);
+          console.log('  -> FOR completed, next line:', result.nextLine);
           i = result.nextLine;
           continue;
         }
         
         // Handle while loops
-        if (line.startsWith('while')) {
+        if (line.startsWith('while') && !line.includes('}')) {
           const result = executeWhileLoop(lines, i);
           i = result.nextLine;
           continue;
         }
         
+        // Handle do-while loops
+        if (line.startsWith('do')) {
+          const result = executeDoWhileLoop(lines, i);
+          i = result.nextLine;
+          continue;
+        }
+        
+        // Handle break
+        if (line === 'break;') {
+          breakFlag = true;
+          i++;
+          continue;
+        }
+        
+        // Handle continue
+        if (line === 'continue;') {
+          continueFlag = true;
+          i++;
+          continue;
+        }
+        
         // Execute single statement
+        console.log('  -> Executing single statement');
         executeLine(line);
         i++;
       }
+      console.log('executeBlock completed');
     }
 
     function executeLine(line) {
+      console.log('executeLine called with:', line);
       // Remove trailing semicolon and braces
       line = line.replace(/[;{}]/g, '').trim();
-      if (!line) return;
+      if (!line) {
+        console.log('  -> Line is empty after cleanup');
+        return;
+      }
       
-      // Variable declaration
-      const varDeclMatch = line.match(/^(int|String|boolean|double|float)\s+(\w+)\s*=\s*(.+)$/);
+      // Variable declaration with initialization
+      const varDeclMatch = line.match(/^(int|String|boolean|double|float|long|short|byte|char)((\[\])+)?\s+(\w+)(\[\])?\s*=\s*(.+)$/);
       if (varDeclMatch) {
-        const varName = varDeclMatch[2];
-        const value = evaluateExpression(varDeclMatch[3]);
-        variables[varName] = value;
+        const varName = varDeclMatch[4];
+        const isArray = varDeclMatch[2] || varDeclMatch[5];
+        const value = evaluateExpression(varDeclMatch[6]);
+        console.log(`  Variable declaration: ${varName} = ${value}`);
+        setVariable(varName, value, true);
         return;
       }
       
       // Variable declaration without assignment
-      const varDeclOnlyMatch = line.match(/^(int|String|boolean|double|float)\s+(\w+)$/);
+      const varDeclOnlyMatch = line.match(/^(int|String|boolean|double|float|long|short|byte|char)((\[\])+)?\s+(\w+)(\[\])?$/);
       if (varDeclOnlyMatch) {
-        variables[varDeclOnlyMatch[2]] = 0;
+        const isArray = varDeclOnlyMatch[2] || varDeclOnlyMatch[5];
+        setVariable(varDeclOnlyMatch[4], isArray ? [] : 0, true);
+        return;
+      }
+      
+      // Array element assignment
+      const arrayAssignMatch = line.match(/^(\w+)\[(.+)\]\s*=\s*(.+)$/);
+      if (arrayAssignMatch) {
+        const arrName = arrayAssignMatch[1];
+        const index = evaluateExpression(arrayAssignMatch[2]);
+        const value = evaluateExpression(arrayAssignMatch[3]);
+        const arr = getVariable(arrName);
+        if (Array.isArray(arr)) {
+          arr[index] = value;
+        }
         return;
       }
       
@@ -892,8 +1038,9 @@
       if (incDecMatch) {
         const varName = incDecMatch[2] || incDecMatch[3];
         const op = incDecMatch[1] || incDecMatch[4];
-        if (variables[varName] !== undefined) {
-          variables[varName] += (op === '++' ? 1 : -1);
+        const currentVal = getVariable(varName);
+        if (currentVal !== undefined) {
+          setVariable(varName, currentVal + (op === '++' ? 1 : -1));
         }
         return;
       }
@@ -904,14 +1051,15 @@
         const varName = compoundMatch[1];
         const op = compoundMatch[2];
         const value = evaluateExpression(compoundMatch[3]);
+        const currentVal = getVariable(varName);
         
-        if (variables[varName] !== undefined) {
+        if (currentVal !== undefined) {
           switch(op) {
-            case '+=': variables[varName] += value; break;
-            case '-=': variables[varName] -= value; break;
-            case '*=': variables[varName] *= value; break;
-            case '/=': variables[varName] /= value; break;
-            case '%=': variables[varName] %= value; break;
+            case '+=': setVariable(varName, currentVal + value); break;
+            case '-=': setVariable(varName, currentVal - value); break;
+            case '*=': setVariable(varName, currentVal * value); break;
+            case '/=': setVariable(varName, currentVal / value); break;
+            case '%=': setVariable(varName, currentVal % value); break;
           }
         }
         return;
@@ -922,7 +1070,7 @@
       if (assignMatch) {
         const varName = assignMatch[1];
         const value = evaluateExpression(assignMatch[2]);
-        variables[varName] = value;
+        setVariable(varName, value);
         return;
       }
       
@@ -930,14 +1078,19 @@
       const printMatch = line.match(/^System\.out\.println\((.*)\)$/);
       if (printMatch) {
         const content = printMatch[1].trim();
+        console.log('  System.out.println content:', content);
         let output = '';
         
-        if (content.startsWith('"') && content.endsWith('"')) {
+        // Handle string concatenation with +
+        if (content.includes('+') && content.includes('"')) {
+          output = evaluateStringExpression(content);
+        } else if (content.startsWith('"') && content.endsWith('"')) {
           output = content.slice(1, -1);
         } else {
           output = evaluateExpression(content);
         }
         
+        console.log('  Output:', output);
         consoleLog(output);
         return;
       }
@@ -952,37 +1105,86 @@
 
     function executeIfStatement(lines, startIndex) {
       const ifLine = lines[startIndex].trim();
+      console.log('executeIfStatement:', ifLine);
       const conditionMatch = ifLine.match(/if\s*\((.+)\)/);
       const condition = evaluateExpression(conditionMatch[1]);
+      console.log('  Condition evaluated to:', condition);
       
       // Find the block
+      pushScope();
       const blockStart = startIndex + 1;
       let blockEnd = findBlockEnd(lines, startIndex);
       
       if (condition) {
         executeBlock(lines, blockStart, blockEnd);
-      }
-      
-      // Check for else
-      let nextLine = blockEnd;
-      if (nextLine < lines.length && lines[nextLine].trim().startsWith('else')) {
-        const elseEnd = findBlockEnd(lines, nextLine);
-        if (!condition) {
-          executeBlock(lines, nextLine + 1, elseEnd);
+        popScope();
+        
+        // Skip any else/else-if blocks
+        let nextLine = blockEnd;
+        while (nextLine < lines.length && lines[nextLine].trim().startsWith('else')) {
+          nextLine = findBlockEnd(lines, nextLine);
         }
-        return { nextLine: elseEnd };
+        return { nextLine: nextLine };
+      } else {
+        popScope();
       }
       
-      return { nextLine: blockEnd };
+      // Check for else-if and else
+      let nextLine = blockEnd;
+      while (nextLine < lines.length) {
+        const elseLine = lines[nextLine].trim();
+        
+        if (elseLine.startsWith('else if')) {
+          // Handle else-if
+          const elseIfCondMatch = elseLine.match(/else\s+if\s*\((.+)\)/);
+          const elseIfCond = evaluateExpression(elseIfCondMatch[1]);
+          
+          pushScope();
+          const elseIfBlockStart = nextLine + 1;
+          const elseIfBlockEnd = findBlockEnd(lines, nextLine);
+          
+          if (elseIfCond) {
+            executeBlock(lines, elseIfBlockStart, elseIfBlockEnd);
+            popScope();
+            
+            // Skip remaining else-if/else blocks
+            nextLine = elseIfBlockEnd;
+            while (nextLine < lines.length && lines[nextLine].trim().startsWith('else')) {
+              nextLine = findBlockEnd(lines, nextLine);
+            }
+            return { nextLine: nextLine };
+          } else {
+            popScope();
+            nextLine = elseIfBlockEnd;
+          }
+        } else if (elseLine.startsWith('else') && !elseLine.startsWith('else if')) {
+          // Handle else
+          pushScope();
+          const elseBlockStart = nextLine + 1;
+          const elseBlockEnd = findBlockEnd(lines, nextLine);
+          executeBlock(lines, elseBlockStart, elseBlockEnd);
+          popScope();
+          return { nextLine: elseBlockEnd };
+        } else {
+          break;
+        }
+      }
+      
+      return { nextLine: nextLine };
     }
 
     function executeForLoop(lines, startIndex) {
       const forLine = lines[startIndex].trim();
+      console.log('executeForLoop:', forLine);
       const forMatch = forLine.match(/for\s*\((.+)\)/);
       
       if (forMatch) {
         const parts = forMatch[1].split(';').map(p => p.trim());
+        console.log('  For loop parts:', parts);
         if (parts.length === 3) {
+          // Create new scope for the loop
+          pushScope();
+          
           // Init
           executeLine(parts[0]);
           
@@ -992,14 +1194,28 @@
           
           // Execute loop
           let iterations = 0;
-          const maxIterations = 1000; // Safety limit
+          const maxIterations = 10000; // Safety limit
           
           while (evaluateExpression(parts[1]) && iterations < maxIterations) {
+            breakFlag = false;
+            continueFlag = false;
+            
             executeBlock(lines, blockStart, blockEnd);
+            
+            if (breakFlag) {
+              breakFlag = false;
+              break;
+            }
+            
+            if (continueFlag) {
+              continueFlag = false;
+            }
+            
             executeLine(parts[2]);
             iterations++;
           }
           
+          popScope();
           return { nextLine: blockEnd };
         }
       }
@@ -1012,39 +1228,127 @@
       const conditionMatch = whileLine.match(/while\s*\((.+)\)/);
       
       if (conditionMatch) {
+        pushScope();
         const blockStart = startIndex + 1;
         const blockEnd = findBlockEnd(lines, startIndex);
         
         let iterations = 0;
-        const maxIterations = 1000;
+        const maxIterations = 10000;
         
         while (evaluateExpression(conditionMatch[1]) && iterations < maxIterations) {
+          breakFlag = false;
+          continueFlag = false;
+          
           executeBlock(lines, blockStart, blockEnd);
+          
+          if (breakFlag) {
+            breakFlag = false;
+            break;
+          }
+          
+          if (continueFlag) {
+            continueFlag = false;
+          }
+          
           iterations++;
         }
         
+        popScope();
         return { nextLine: blockEnd };
       }
       
       return { nextLine: findBlockEnd(lines, startIndex) };
     }
-
-    function findBlockEnd(lines, startIndex) {
-      let depth = 0;
-      let i = startIndex;
+    
+    function executeDoWhileLoop(lines, startIndex) {
+      pushScope();
+      const blockStart = startIndex + 1;
+      let blockEnd = startIndex + 1;
       
-      // Check if the starting line has an opening brace
-      if (lines[i].includes('{')) depth++;
-      i++;
-      
+      // Find the closing brace and while condition
+      let depth = 1;
+      let i = blockStart;
       while (i < lines.length && depth > 0) {
         const line = lines[i].trim();
-        if (line.includes('{')) depth++;
-        if (line.includes('}')) depth--;
+        if (line === '{') depth++;
+        if (line === '}' || line.startsWith('}')) {
+          depth--;
+          if (depth === 0) blockEnd = i;
+        }
         i++;
       }
       
-      return i;
+      // Find the while condition
+      let whileCondLine = blockEnd;
+      while (whileCondLine < lines.length) {
+        if (lines[whileCondLine].trim().startsWith('}') && lines[whileCondLine].includes('while')) {
+          break;
+        }
+        whileCondLine++;
+      }
+      
+      const condMatch = lines[whileCondLine].match(/while\s*\((.+)\)/);
+      
+      if (condMatch) {
+        let iterations = 0;
+        const maxIterations = 10000;
+        
+        do {
+          breakFlag = false;
+          continueFlag = false;
+          
+          executeBlock(lines, blockStart, blockEnd);
+          
+          if (breakFlag) {
+            breakFlag = false;
+            break;
+          }
+          
+          if (continueFlag) {
+            continueFlag = false;
+          }
+          
+          iterations++;
+        } while (evaluateExpression(condMatch[1]) && iterations < maxIterations);
+      }
+      
+      popScope();
+      return { nextLine: whileCondLine + 1 };
+    }
+
+    function findBlockEnd(lines, startIndex) {
+      const startLine = lines[startIndex].trim();
+      console.log(`findBlockEnd: startIndex=${startIndex}, line="${startLine}"`);
+      let i = startIndex;
+      
+      // Check if the starting line has an opening brace (e.g., "if (x) {" or just "{")
+      if (startLine.includes('{')) {
+        console.log('  Has opening brace, finding matching close');
+        // Has braces - find matching closing brace
+        let depth = 1; // Start at 1 since we found an opening brace
+        i++; // Move to next line
+        
+        while (i < lines.length && depth > 0) {
+          const line = lines[i].trim();
+          
+          // Count all opening braces on this line
+          for (let char of line) {
+            if (char === '{') depth++;
+            if (char === '}') depth--;
+            if (depth === 0) break;
+          }
+          
+          i++;
+        }
+        
+        console.log('  Block ends at line:', i);
+        return i; // Return line after closing brace
+      } else {
+        // No braces - single statement
+        // The next line should contain the statement
+        console.log('  No braces, single statement, returning:', startIndex + 2);
+        return startIndex + 2;
+      }
     }
 
     function evaluateExpression(expr) {
@@ -1055,24 +1359,141 @@
         return expr.slice(1, -1);
       }
       
+      // Character literal
+      if (expr.startsWith("'") && expr.endsWith("'") && expr.length === 3) {
+        return expr.charAt(1);
+      }
+      
       // Boolean literal
       if (expr === 'true') return true;
       if (expr === 'false') return false;
       
-      // Replace variables with their values
-      for (let varName in variables) {
-        const regex = new RegExp('\\b' + varName + '\\b', 'g');
-        expr = expr.replace(regex, variables[varName]);
+      // Null literal
+      if (expr === 'null') return null;
+      
+      // Array creation
+      const arrayNewMatch = expr.match(/new\s+(int|String|boolean|double|float)\[(\d+)\]/);
+      if (arrayNewMatch) {
+        return new Array(parseInt(arrayNewMatch[2])).fill(0);
       }
       
-      // Evaluate
+      // Array literal (e.g., {1, 2, 3})
+      if (expr.startsWith('{') && expr.endsWith('}')) {
+        const elements = expr.slice(1, -1).split(',').map(e => evaluateExpression(e.trim()));
+        return elements;
+      }
+      
+      // Array access
+      const arrayAccessMatch = expr.match(/^(\w+)\[(.+)\]$/);
+      if (arrayAccessMatch) {
+        const arrName = arrayAccessMatch[1];
+        const index = evaluateExpression(arrayAccessMatch[2]);
+        const arr = getVariable(arrName);
+        if (Array.isArray(arr)) {
+          return arr[index];
+        }
+      }
+      
+      // String concatenation with + (check for quotes to avoid recursion)
+      if (expr.includes('+') && expr.includes('"')) {
+        return evaluateStringExpression(expr);
+      }
+      
+      // Replace variable names with their values
+      let processedExpr = expr;
+      
+      // Get all variables from all scopes
+      const allVars = {};
+      for (let scope of variableScopes) {
+        Object.assign(allVars, scope);
+      }
+      
+      // Sort variable names by length (longest first) to avoid partial replacements
+      const varNames = Object.keys(allVars).sort((a, b) => b.length - a.length);
+      
+      for (let varName of varNames) {
+        const regex = new RegExp('\\b' + varName + '\\b', 'g');
+        const value = allVars[varName];
+        
+        // Replace with proper value representation
+        if (typeof value === 'string') {
+          processedExpr = processedExpr.replace(regex, '"' + value + '"');
+        } else {
+          processedExpr = processedExpr.replace(regex, String(value));
+        }
+      }
+      
+      // Replace Java operators with JavaScript equivalents
+      processedExpr = processedExpr.replace(/&&/g, '&&');
+      processedExpr = processedExpr.replace(/\|\|/g, '||');
+      
+      // Evaluate using JavaScript
       try {
-        return eval(expr);
+        // Use Function constructor for safer evaluation
+        const result = new Function('return ' + processedExpr)();
+        return result;
       } catch (e) {
+        // If evaluation fails, try returning as-is or 0
+        if (!isNaN(processedExpr)) {
+          return parseFloat(processedExpr);
+        }
         return 0;
       }
     }
 
+    function evaluateStringExpression(expr) {
+      // Handle string concatenation: "text" + variable + "more text"
+      let result = '';
+      let currentToken = '';
+      let inString = false;
+      let i = 0;
+      
+      while (i < expr.length) {
+        const char = expr[i];
+        
+        if (char === '"' && (i === 0 || expr[i-1] !== '\\')) {
+          if (inString) {
+            // End of string literal
+            result += currentToken;
+            currentToken = '';
+            inString = false;
+          } else {
+            // Start of string literal
+            // First evaluate any pending token as variable/expression
+            if (currentToken.trim()) {
+              const val = evaluateExpression(currentToken.trim());
+              result += String(val);
+              currentToken = '';
+            }
+            inString = true;
+          }
+        } else if (char === '+' && !inString) {
+          // Operator outside string - evaluate what we have
+          if (currentToken.trim()) {
+            const val = evaluateExpression(currentToken.trim());
+            result += String(val);
+            currentToken = '';
+          }
+        } else {
+          currentToken += char;
+        }
+        
+        i++;
+      }
+      
+      // Handle any remaining token
+      if (currentToken.trim()) {
+        if (inString) {
+          result += currentToken;
+        } else {
+          const val = evaluateExpression(currentToken.trim());
+          result += String(val);
+        }
+      }
+      
+      return result;
+    }
+    
     function executeGameFunction(funcName) {
       switch(funcName) {
         case 'moveLeft':
@@ -1198,9 +1619,29 @@
       // Skip empty lines, comments, and closing braces
       if (!line || line.startsWith('//') || line === '}' || line === '{') return 0;
 
-      // Variable declaration: 2 points
-      if (/^(int|String|boolean|double|float)\s+\w+/.test(line)) {
+      // Variable declaration: 2 points (all data types)
+      if (/^(int|String|boolean|double|float|long|short|byte|char)(\[\])?\s+\w+/.test(line)) {
         score += 2;
+      }
+      
+      // Array declaration: extra 2 points for array complexity
+      if (/\[\]/.test(line) && /^(int|String|boolean|double|float|long|short|byte|char)/.test(line)) {
+        score += 2; // Arrays are more complex
+      }
+      
+      // Array initialization with new keyword: 3 points
+      if (/new\s+(int|String|boolean|double|float|long|short|byte|char)\[/.test(line)) {
+        score += 3;
+      }
+      
+      // Array literal initialization: 2 points
+      if (/=\s*\{[^}]+\}/.test(line)) {
+        score += 2;
+      }
+      
+      // Array access/assignment: 1 point
+      if (/\w+\[\w+\]/.test(line)) {
+        score += 1;
       }
 
       // If statement: 4 points
@@ -1214,6 +1655,10 @@
       // Else/else if: 3 points
       if (/^else/.test(line)) {
         score += 3;
+        // Extra point for else-if (more complex than plain else)
+        if (/^else\s+if/.test(line)) {
+          score += 1;
+        }
       }
 
       // For loop: 5 points
@@ -1222,8 +1667,18 @@
       }
 
       // While loop: 5 points
-      if (/^while\s*\(/.test(line)) {
+      if (/^while\s*\(/.test(line) && !line.includes('}')) {
         score += 5;
+      }
+      
+      // Do-while loop: 6 points (slightly harder than regular while)
+      if (/^do\s*\{?$/.test(line)) {
+        score += 6;
+      }
+      
+      // Break/continue: 2 points (control flow manipulation)
+      if (/^(break|continue);$/.test(line)) {
+        score += 2;
       }
 
       // Function calls: 3 points each
@@ -1247,7 +1702,7 @@
       }
 
       // Regular assignment: 1 point
-      if (/^\w+\s*=\s*[^=]/.test(line) && !/(\+=|-=|\*=|\/=|%=)/.test(line)) {
+      if (/^\w+(\[\w+\])?\s*=\s*[^=]/.test(line) && !/(\+=|-=|\*=|\/=|%=)/.test(line)) {
         score += 1;
       }
 
@@ -1265,6 +1720,11 @@
       // System.out.println: 2 points
       if (/System\.out\.println/.test(line)) {
         score += 2;
+      }
+      
+      // String concatenation with +: 1 point for complexity
+      if (/System\.out\.println.*\+/.test(line) || (/String.*=.*\+/.test(line))) {
+        score += 1;
       }
 
       return score;
