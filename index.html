@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="description" content="Python Battles - A coding battle game where you write Python code to control your character and defeat opponents.">
+  <meta name="description" content="Java Battles - A coding battle game where you write Java code to control your character and defeat opponents.">
   <meta name="author" content="Kaden Cruts">
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Python Battles</title>
+  <title>Java Battles</title>
   <link rel="stylesheet" href="style.css">
   <style>
     body {
-      background-image: url('images/backgrounds/background.jpg');
-      background-size: cover;
+      background-color: #ddd;
       font-family: Arial, sans-serif;
+      overflow: hidden;
     }
     h1 {
       text-align: center;
@@ -20,11 +20,32 @@
       margin-top: 50px;
       text-shadow: 2px 2px 4px #000;
     }
+    .page-container {
+      display: flex;
+      width: 200%;
+      transition: transform 0.5s ease-in-out;
+      min-height: 100vh;
+    }
+    .page-container.slide-left {
+      transform: translateX(-50%);
+    }
+    .page-content {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 20px;
+      overflow-y: auto;
+    }
     .gameMode-select {
       display: flex;
       justify-content: center;
       gap: 50px;
       margin:50px 10px 20px;
+      width: 50%;
+      flex-direction: row;
+      align-items: center;
     }
     .gameMode-option {
       background: rgba(255, 255, 255, 0.0);
@@ -83,26 +104,144 @@
     #multiplayer-option{
       background-image: url('images/backgrounds/multi.png');
     }
+    #singlePlayerSelect{
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 50px;
+      margin:20px 10px 50px;
+      width: 50%;
+      flex-direction: row;
+      align-items: center;
+      overflow-y: auto;
+    }
+    #singlePlayerSelect button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      background-color: #ff6b6b;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      margin-bottom: 20px;
+    }
+    #singlePlayerSelect section {
+      text-align: center;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 30px;
+      border-radius: 10px;
+      color: #fff;
+      width: 250px;
+      border: 3px solid #28a745;
+      background-size: cover;
+      background-position: center;
+    }
+    #singlePlayerSelect section h2 {
+      margin-bottom: 15px;
+      text-shadow: 1px 1px 3px #000;
+    }
+    #singlePlayerSelect section p {
+      margin-bottom: 20px;
+      text-shadow: 1px 1px 3px #000;
+    }
+    #singlePlayerSelect section button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 5px;
+      background-color: #28a745;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      margin: 0;
+    }
+    #tutorial {
+      border-color: #17a2b8!important;
+      background-image: url('images/backgrounds/tutorial.png')!important;
+    }
+    #campaign {
+      border-color: #ffc107!important;
+      background-image: url('images/backgrounds/campaign.png')!important;
+    }
   </style>
 </head>
 <body>
-  <h1>Welcome to Python Battles</h1>
-  <div class="gameMode-select">
-    <div class="gameMode-option" id="singleplayer-option">
-      <div class="content">
-        <h2>Singleplayer</h2>
-        <p>Play against AI opponents in a solo adventure to unlock better libraries</p>
-        <button id="singleplayer-button">Start Singleplayer</button>
+  <div class="page-container" id="pageContainer">
+    <!-- Left Page: Game Mode Selection -->
+    <div class="page-content">
+      <h1>Welcome to Java Battles</h1>
+      <div class="gameMode-select" id="gameModeSelect">
+        <div class="gameMode-option" id="singleplayer-option">
+          <div class="content">
+            <h2>Singleplayer</h2>
+            <p>Play against AI opponents in a solo adventure to unlock better libraries</p>
+          </div>
+        </div>
+        <div class="gameMode-option" id="multiplayer-option">
+          <h2>Multiplayer</h2>
+          <p>Compete against other players online in real-time coding battles</p>
+          <button id="multiplayer-button">Start Multiplayer</button>
+        </div>
       </div>
     </div>
-    <div class="gameMode-option" id="multiplayer-option">
-      <h2>Multiplayer</h2>
-      <p>Compete against other players online in real-time coding battles</p>
-      <button id="multiplayer-button">Start Multiplayer</button>
+
+    <!-- Right Page: Singleplayer Mode Selection -->
+    <div class="page-content">
+      <div id="singlePlayerSelect">
+        <button>Back</button>
+        <!-- Sections for Tutorial, Campaign, and Free Play -->
+        <section id="tutorial">
+          <h2>Tutorial</h2>
+          <p>Learn the basics of Java Battles through a guided tutorial.</p>
+          <button id="start-tutorial-button">Start Tutorial</button>
+        </section>
+
+        <section id="campaign">
+          <h2>Campaign</h2>
+          <p>Embark on a journey through various levels and challenges.</p>
+          <button id="start-campaign-button">Start Campaign</button>
+        </section>
+
+        <section id="freeplay">
+          <h2>Free Play</h2>
+          <p>Practice your skills in a sandbox environment.</p>
+          <button id="start-freeplay-button">Start Free Play</button>
+        </section>
+      </div>
     </div>
   </div>
 
-
-
 </body>
+<script>
+  // Handle singleplayer div click to slide in singlePlayerSelect
+  document.getElementById('singleplayer-option').addEventListener('click', () => {
+    document.getElementById('pageContainer').classList.add('slide-left');
+  });
+
+  // Handle back button to slide back
+  document.querySelector('#singlePlayerSelect button').addEventListener('click', () => {
+    document.getElementById('pageContainer').classList.remove('slide-left');
+  });
+
+  // Handle multiplayer button
+  document.getElementById('multiplayer-button').addEventListener('click', () => {
+    alert('Multiplayer not yet implemented');
+  });
+
+  // Handle tutorial button
+  document.getElementById('start-tutorial-button').addEventListener('click', () => {
+    window.location.href = 'coding.html?mode=tutorial';
+  });
+
+  // Handle campaign button
+  document.getElementById('start-campaign-button').addEventListener('click', () => {
+    window.location.href = 'coding.html?mode=campaign';
+  });
+
+  // Handle freeplay button
+  document.getElementById('start-freeplay-button').addEventListener('click', () => {
+    window.location.href = 'coding.html?mode=freeplay';
+  });
+</script>
 </html>

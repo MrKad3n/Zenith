@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="description" content="Python Battles - A coding battle game where you write Python code to control your character and defeat opponents.">
+  <meta name="description" content="Java Battles - A coding battle game where you write Java code to control your character and defeat opponents.">
   <meta name="author" content="Kaden Cruts">
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Python Battles</title>
+  <title>Java Battles</title>
   <link rel="stylesheet" href="style.css">
   <style>
     * {
@@ -922,8 +922,8 @@
       const functionCallPattern = /^(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree)\(\);$/;
       if (functionCallPattern.test(line)) return true;
 
-      // Allow System.out.println
-      const printPattern = /^System\.out\.println\(.*\);$/;
+      // Allow System.out.println and System.out.print
+      const printPattern = /^System\.out\.print(ln)?\(.*\);$/;
       if (printPattern.test(line)) return true;
 
       // Allow if statements
@@ -1188,11 +1188,12 @@
         return;
       }
       
-      // System.out.println
-      const printMatch = line.match(/^System\.out\.println\((.*)\)$/);
+      // System.out.println and System.out.print
+      const printMatch = line.match(/^System\.out\.print(ln)?\((.*)\)$/);
       if (printMatch) {
-        const content = printMatch[1].trim();
-        console.log('  System.out.println content:', content);
+        const content = printMatch[2].trim();
+        const isNewline = printMatch[1] === 'ln';
+        console.log('  System.out.print' + (isNewline ? 'ln' : '') + ' content:', content);
         let output = '';
         
         // Handle string concatenation with +
@@ -1855,8 +1856,8 @@
         score += validOps.length * 1;
       }
 
-      // System.out.println: 2 points
-      if (/System\.out\.println/.test(line)) {
+      // System.out.println or System.out.print: 2 points
+      if (/System\.out\.print(ln)?/.test(line)) {
         score += 2;
       }
       
