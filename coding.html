@@ -384,6 +384,10 @@
     const ALLOWED_FUNCTIONS = ['moveLeft', 'moveRight', 'attack', 'defend', 'heal', 'attackEnemySlotOne', 'attackEnemySlotTwo', 'attackEnemySlotThree'];
     const JAVA_KEYWORDS = ['if', 'else', 'for', 'while', 'class', 'public', 'private', 'void', 'int', 'return', 'break', 'continue', 'do'];
 
+    // Loop safety limits
+    const MAX_ITERATIONS_PER_LOOP = 200; // hard cap per loop
+    const TOTAL_LOOP_BUDGET = 500;       // shared budget across all loops per run
+
     // Game state
     let gameState = {
       playerHP: 100,
@@ -394,6 +398,9 @@
       console: [],
       complexityScore: 0
     };
+
+    // Remaining loop iteration budget for the current run
+    let loopIterationBudget = TOTAL_LOOP_BUDGET;
 
     // Variable storage for code execution with scoping
     let variableScopes = [{}]; // Stack of scopes
@@ -458,26 +465,28 @@
         // Handle enter key - insert <br> and position cursor
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
-          
-          // Get current selection
+
+          // Get caret index counting <br> as newline
+          const caretBefore = getCaretIndex(codeArea);
+          console.log('[Enter] caret before:', caretBefore);
+
+          // Insert <br> at current selection
           const selection = window.getSelection();
           if (selection.rangeCount === 0) return false;
-          
           const range = selection.getRangeAt(0);
-          
-          // Create a br element and insert it
           const br = document.createElement('br');
           range.insertNode(br);
-          
-          // Move cursor after the br
-          range.setStart(br.nextSibling || codeArea, 0);
-          range.collapse(true);
-          
-          selection.removeAllRanges();
-          selection.addRange(range);
+
+          // Move caret to the position immediately after the inserted <br>
+          const targetIndex = caretBefore + 1;
+          setCaretByIndex(codeArea, targetIndex);
+
+          const caretAfter = getCaretIndex(codeArea);
+          console.log('[Enter] caret after:', caretAfter, 'length:', codeArea.innerText.length);
           
           // Trigger syntax highlighting
           setTimeout(() => {
+            console.log('[Enter] applySyntaxHighlighting call');
             applySyntaxHighlighting();
           }, 10);
           
@@ -546,6 +555,74 @@
     // Flag to prevent input event from triggering syntax highlighting
     let preventHighlighting = false;
 
+    // Return caret index counting <br> as a single newline character
+    function getCaretIndex(rootEl) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return 0;
+
+      const range = selection.getRangeAt(0).cloneRange();
+      const markerChar = '\uE000';
+      const marker = document.createTextNode(markerChar);
+      range.insertNode(marker);
+
+      const clone = rootEl.cloneNode(true);
+      clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+      const text = clone.textContent || '';
+      const index = text.indexOf(markerChar);
+
+      marker.parentNode.removeChild(marker);
+      return Math.max(0, index);
+    }
+
+    function setCaretByIndex(rootEl, index) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      let current = 0;
+      let found = false;
+
+      function walk(node) {
+        if (found) return;
+
+        if (node.nodeType === Node.TEXT_NODE) {
+          const next = current + node.textContent.length;
+          if (index <= next) {
+            range.setStart(node, Math.max(0, index - current));
+            found = true;
+            return;
+          }
+          current = next;
+          return;
+        }
+
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+          const next = current + 1; // count newline for <br>
+          if (index <= next) {
+            range.setStartAfter(node);
+            found = true;
+            return;
+          }
+          current = next;
+        }
+
+        let child = node.firstChild;
+        while (child && !found) {
+          walk(child);
+          child = child.nextSibling;
+        }
+      }
+
+      walk(rootEl);
+
+      if (!found) {
+        range.selectNodeContents(rootEl);
+        range.collapse(false);
+      }
+
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
     function applySyntaxHighlighting() {
       if (isHighlighting) {
         return;
@@ -554,14 +631,16 @@
       isHighlighting = true;
       preventHighlighting = true;
       const codeArea = document.getElementById('codeArea');
-      
+
+      // Capture caret index (counts <br> as newline)
+      const caretIndex = getCaretIndex(codeArea);
+
       // Clone and convert <br> tags to newlines to preserve structure
       const clone = codeArea.cloneNode(true);
-      const brs = clone.querySelectorAll('br');
-      brs.forEach(br => br.replaceWith('\n'));
+      clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
       
       // Get text content with line breaks preserved
-      let code = clone.textContent || '';
+      const code = clone.textContent || '';
       
       if (!code) {
         codeArea.innerHTML = '';
@@ -573,20 +652,15 @@
       const highlighted = highlightJavaCode(code);
       codeArea.innerHTML = highlighted;
       
-      // Move cursor to end of content
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(codeArea);
-      range.collapse(false);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      // Restore caret position if we captured it
+      setCaretByIndex(codeArea, caretIndex);
       
       isHighlighting = false;
       
       // Re-enable input event listener after a short delay
       setTimeout(() => {
         preventHighlighting = false;
-      }, 50);
+      }, 20);
     }
 
     function highlightJavaCode(code) {
@@ -743,6 +817,9 @@
       let stringChar = '';
       let inComment = false;
 
+      // Check for damage/heal functions inside loops
+      checkForForbiddenFunctionsInLoops(lines);
+
       for (let line of lines) {
         const trimmedLine = line.trim();
         
@@ -798,6 +875,42 @@
 
       if (inString) {
         throw new Error('Unterminated string');
+      }
+    }
+
+    function checkForForbiddenFunctionsInLoops(lines) {
+      const forbiddenFuncs = ['attack', 'defend', 'heal', 'attackEnemySlotOne', 'attackEnemySlotTwo', 'attackEnemySlotThree'];
+      const loopStarts = ['for', 'while', 'do'];
+      
+      let loopDepth = 0;
+      let inLoop = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+
+        // Skip empty lines and comments
+        if (!line || line.startsWith('//')) continue;
+
+        // Track entering a loop
+        if (loopStarts.some(keyword => line.startsWith(keyword))) {
+          loopDepth++;
+          inLoop = true;
+        }
+
+        // Track closing brace (decreases depth if inside a loop)
+        if (line === '}' && loopDepth > 0) {
+          loopDepth--;
+          if (loopDepth === 0) inLoop = false;
+        }
+
+        // If we're inside a loop, check for forbidden functions
+        if (inLoop && loopDepth > 0) {
+          for (let func of forbiddenFuncs) {
+            if (line.includes(func + '()')) {
+              throw new Error('Forbidden: ' + func + '() cannot be used inside loops (line ' + (i + 1) + ')');
+            }
+          }
+        }
       }
     }
 
@@ -884,6 +997,7 @@
       continueFlag = false;
       gameState.console = [];
       gameState.defending = false;
+      loopIterationBudget = TOTAL_LOOP_BUDGET;
       
       const lines = code.split('\n');
       let score = 0;
@@ -1194,12 +1308,12 @@
           
           // Execute loop
           let iterations = 0;
-          const maxIterations = 10000; // Safety limit
           
-          while (evaluateExpression(parts[1]) && iterations < maxIterations) {
+          while (evaluateExpression(parts[1]) && iterations < MAX_ITERATIONS_PER_LOOP && loopIterationBudget > 0) {
             breakFlag = false;
             continueFlag = false;
             
+            loopIterationBudget--;
             executeBlock(lines, blockStart, blockEnd);
             
             if (breakFlag) {
@@ -1213,6 +1327,13 @@
             
             executeLine(parts[2]);
             iterations++;
+          }
+          
+          if (iterations >= MAX_ITERATIONS_PER_LOOP) {
+            consoleLog('For loop stopped early: per-loop iteration cap reached (' + MAX_ITERATIONS_PER_LOOP + ').', 'info');
+          }
+          if (loopIterationBudget <= 0) {
+            consoleLog('For loop stopped early: total loop budget exhausted (' + TOTAL_LOOP_BUDGET + ').', 'info');
           }
           
           popScope();
@@ -1233,12 +1354,12 @@
         const blockEnd = findBlockEnd(lines, startIndex);
         
         let iterations = 0;
-        const maxIterations = 10000;
         
-        while (evaluateExpression(conditionMatch[1]) && iterations < maxIterations) {
+        while (evaluateExpression(conditionMatch[1]) && iterations < MAX_ITERATIONS_PER_LOOP && loopIterationBudget > 0) {
           breakFlag = false;
           continueFlag = false;
           
+          loopIterationBudget--;
           executeBlock(lines, blockStart, blockEnd);
           
           if (breakFlag) {
@@ -1251,6 +1372,13 @@
           }
           
           iterations++;
+        }
+        
+        if (iterations >= MAX_ITERATIONS_PER_LOOP) {
+          consoleLog('While loop stopped early: per-loop iteration cap reached (' + MAX_ITERATIONS_PER_LOOP + ').', 'info');
+        }
+        if (loopIterationBudget <= 0) {
+          consoleLog('While loop stopped early: total loop budget exhausted (' + TOTAL_LOOP_BUDGET + ').', 'info');
         }
         
         popScope();
@@ -1291,12 +1419,15 @@
       
       if (condMatch) {
         let iterations = 0;
-        const maxIterations = 10000;
         
         do {
           breakFlag = false;
           continueFlag = false;
           
+          if (loopIterationBudget <= 0) {
+            break;
+          }
+          loopIterationBudget--;
           executeBlock(lines, blockStart, blockEnd);
           
           if (breakFlag) {
@@ -1309,7 +1440,14 @@
           }
           
           iterations++;
-        } while (evaluateExpression(condMatch[1]) && iterations < maxIterations);
+        } while (evaluateExpression(condMatch[1]) && iterations < MAX_ITERATIONS_PER_LOOP && loopIterationBudget > 0);
+
+        if (iterations >= MAX_ITERATIONS_PER_LOOP) {
+          consoleLog('Do-while loop stopped early: per-loop iteration cap reached (' + MAX_ITERATIONS_PER_LOOP + ').', 'info');
+        }
+        if (loopIterationBudget <= 0) {
+          consoleLog('Do-while loop stopped early: total loop budget exhausted (' + TOTAL_LOOP_BUDGET + ').', 'info');
+        }
       }
       
       popScope();
