@@ -395,9 +395,65 @@
       playerPosition: 2, // 1, 2, or 3
       enemyPosition: 2,
       defending: false,
+      enemyDefending: false,
       console: [],
-      complexityScore: 0
+      complexityScore: 0,
+      enemyComplexityScore: 0,
+      playerChargeStack: 0,
+      enemyChargeStack: 0,
+      playerComboCount: 0,
+      enemyComboCount: 0,
+      playerExpectedCombo: 1,
+      enemyExpectedCombo: 1,
+      playerStealthed: false,
+      enemyStealthed: false,
+      playerStealthInstances: 0,
+      enemyStealthInstances: 0,
+      playerCritBoostActive: false,
+      enemyCritBoostActive: false,
+      playerCritBoostCount: 0,
+      enemyCritBoostCount: 0,
+      playerBarrier: 0,
+      enemyBarrier: 0,
+      playerPoisoned: false,
+      enemyPoisoned: false,
+      playerPoisonTurns: 0,
+      enemyPoisonTurns: 0,
+      executionPaused: false
     };
+
+    // Function cooldowns in milliseconds
+    const COOLDOWNS = {
+      moveLeft: 500,
+      moveRight: 500,
+      attack: 1000,
+      defend: 800,
+      heal: 1500,
+      attackEnemySlotOne: 1000,
+      attackEnemySlotTwo: 1000,
+      attackEnemySlotThree: 1000,
+      qa1: 800,
+      qa2: 800,
+      qa3: 800,
+      qml: 400,
+      qmr: 400,
+      charge: 700,
+      release: 10000,
+      teleportTo: 1200,
+      scan: 600,
+      combo: 1200,
+      stealth: 2000,
+      backstab: 3000,
+      gamble: 1500,
+      critBoost: 2000,
+      barrier: 1800,
+      shieldBash: 2500,
+      poison: 2000,
+      cure: 1000
+    };
+
+    // Track who is executing: 'player' or 'enemy'
+    let currentActor = 'player';
 
     // Remaining loop iteration budget for the current run
     let loopIterationBudget = TOTAL_LOOP_BUDGET;
@@ -497,6 +553,64 @@
       // Exit button functionality
       document.getElementById('exitButton').addEventListener('click', () => {
         window.location.href = 'index.html';
+      });
+
+      // Start battle: enemy AI typing simulation
+      const startBtn = document.getElementById('startBattleButton');
+      const enemyArea = document.getElementById('enemyCodeArea');
+      let enemyBattleInProgress = false;
+
+      function typeTextSlowly(targetEl, text, charDelay = 80, onDone, append = false) {
+        if (!append) {
+          targetEl.value = '';
+        } else {
+          if (targetEl.value && !targetEl.value.endsWith('\n')) {
+            targetEl.value += '\n';
+          }
+        }
+        let i = 0;
+        const timer = setInterval(() => {
+          targetEl.value += text[i];
+          targetEl.scrollTop = targetEl.scrollHeight;
+          i++;
+          if (i >= text.length) {
+            clearInterval(timer);
+            if (onDone) onDone();
+          }
+        }, charDelay);
+      }
+
+      function runEnemyTurn() {
+        if (gameState.enemyHP <= 0 || gameState.playerHP <= 0) {
+          // Battle over
+          enemyBattleInProgress = false;
+          startBtn.disabled = false;
+          consoleLog('Battle ended.', 'info');
+          displayConsole();
+          return;
+        }
+
+        const aiCode = generateEnemyCode();
+        typeTextSlowly(enemyArea, aiCode, 60, () => {
+          executeEnemyJavaCode(aiCode);
+          // Queue next turn if battle continues
+          if (gameState.enemyHP > 0 && gameState.playerHP > 0) {
+            setTimeout(runEnemyTurn, 2500);
+          } else {
+            enemyBattleInProgress = false;
+            startBtn.disabled = false;
+          }
+        }, true);
+      }
+
+      startBtn.addEventListener('click', () => {
+        if (enemyBattleInProgress) return;
+        enemyBattleInProgress = true;
+        startBtn.disabled = true;
+        enemyArea.value = '';
+        consoleLog('Enemy is preparing strategies...', 'info');
+        displayConsole();
+        runEnemyTurn();
       });
 
       // Code validation and execution
@@ -714,7 +828,7 @@
         });
         
         // Highlight function calls
-        highlighted = highlighted.replace(/\b(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree|println)\b/g, function(match) {
+        highlighted = highlighted.replace(/\b(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree|println|qa1|qa2|qa3|qml|qmr|charge|release|teleportTo|scan|combo|stealth|backstab|gamble|critBoost|barrier|shieldBash|poison|cure)\b/g, function(match) {
           const token = `__TOKEN_${tokenId}__`;
           tokens.push({ token, html: '<span class="function">' + match + '</span>' });
           tokenId++;
@@ -879,39 +993,8 @@
     }
 
     function checkForForbiddenFunctionsInLoops(lines) {
-      const forbiddenFuncs = ['attack', 'defend', 'heal', 'attackEnemySlotOne', 'attackEnemySlotTwo', 'attackEnemySlotThree'];
-      const loopStarts = ['for', 'while', 'do'];
-      
-      let loopDepth = 0;
-      let inLoop = false;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-
-        // Skip empty lines and comments
-        if (!line || line.startsWith('//')) continue;
-
-        // Track entering a loop
-        if (loopStarts.some(keyword => line.startsWith(keyword))) {
-          loopDepth++;
-          inLoop = true;
-        }
-
-        // Track closing brace (decreases depth if inside a loop)
-        if (line === '}' && loopDepth > 0) {
-          loopDepth--;
-          if (loopDepth === 0) inLoop = false;
-        }
-
-        // If we're inside a loop, check for forbidden functions
-        if (inLoop && loopDepth > 0) {
-          for (let func of forbiddenFuncs) {
-            if (line.includes(func + '()')) {
-              throw new Error('Forbidden: ' + func + '() cannot be used inside loops (line ' + (i + 1) + ')');
-            }
-          }
-        }
-      }
+      // No functions are banned from loops with the new cooldown system
+      return;
     }
 
     function isValidJavaLine(line) {
@@ -990,7 +1073,7 @@
       return false;
     }
 
-    function executeJavaCode(code) {
+    async function executeJavaCode(code) {
       // Reset game state and variables
       variableScopes = [{}];
       breakFlag = false;
@@ -998,6 +1081,7 @@
       gameState.console = [];
       gameState.defending = false;
       loopIterationBudget = TOTAL_LOOP_BUDGET;
+      currentActor = 'player';
       
       const lines = code.split('\n');
       let score = 0;
@@ -1016,8 +1100,8 @@
         // Store score in game state
         gameState.complexityScore = score;
         
-        // Parse and execute code
-        executeBlock(lines, 0, lines.length);
+        // Parse and execute code with cooldowns
+        await executeBlock(lines, 0, lines.length);
         
         // Update UI
         updateGameUI();
@@ -1031,13 +1115,72 @@
         consoleLog('Complexity Score: ' + score + ' points', 'info');
         consoleLog('Attack Damage: ' + damageCalc.toFixed(1) + ' HP', 'info');
         
+        // Apply poison damage to enemy at end of player turn
+        if (gameState.enemyPoisoned && gameState.enemyPoisonTurns > 0) {
+          gameState.enemyHP = Math.max(0, gameState.enemyHP - 5);
+          gameState.enemyPoisonTurns--;
+          consoleLog('Enemy takes 5 poison damage! (' + gameState.enemyPoisonTurns + ' turns remaining). Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+          if (gameState.enemyPoisonTurns === 0) {
+            gameState.enemyPoisoned = false;
+            consoleLog('Enemy poison wore off!', 'info');
+          }
+        }
+        
       } catch (error) {
         consoleLog('Runtime Error: ' + error.message, 'error');
         displayConsole();
       }
     }
 
-    function executeBlock(lines, start, end) {
+    // Execute enemy's Java-like code with mirrored effects
+    function executeEnemyJavaCode(code) {
+      // Reset enemy variables and flags
+      variableScopes = [{}];
+      breakFlag = false;
+      continueFlag = false;
+      gameState.enemyDefending = false;
+      // Compute enemy complexity score
+      const lines = code.split('\n');
+      let score = 0;
+      try {
+        for (let line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine && !trimmedLine.startsWith('//')) {
+            score += calculateLineScore(trimmedLine);
+          }
+        }
+        gameState.enemyComplexityScore = score;
+        currentActor = 'enemy';
+        executeBlock(lines, 0, lines.length);
+        updateGameUI();
+        displayConsole();
+        consoleLog('\n--- Enemy Execution Complete ---', 'info');
+        consoleLog('Enemy Complexity Score: ' + score + ' points', 'info');
+        consoleLog('Enemy Attack Potential: ' + calculateDamage(score).toFixed(1) + ' HP', 'info');
+        // Apply poison damage to player at end of enemy turn
+        if (gameState.playerPoisoned && gameState.playerPoisonTurns > 0) {
+          gameState.playerHP = Math.max(0, gameState.playerHP - 5);
+          gameState.playerPoisonTurns--;
+          consoleLog('Player takes 5 poison damage! (' + gameState.playerPoisonTurns + ' turns remaining). Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+          if (gameState.playerPoisonTurns === 0) {
+            gameState.playerPoisoned = false;
+            consoleLog('Player poison wore off!', 'info');
+          }
+          updateGameUI();
+          displayConsole();
+        }
+        // Clear enemy code area after successful execution
+        const enemyArea = document.getElementById('enemyCodeArea');
+        if (enemyArea) enemyArea.value = '';
+      } catch (error) {
+        consoleLog('Enemy Runtime Error: ' + error.message, 'error');
+        displayConsole();
+      } finally {
+        currentActor = 'player';
+      }
+    }
+
+    async function executeBlock(lines, start, end) {
       console.log(`executeBlock: start=${start}, end=${end}`);
       let i = start;
       
@@ -1055,7 +1198,7 @@
         // Handle if statements (including else-if chains)
         if (line.startsWith('if')) {
           console.log('  -> Executing IF statement');
-          const result = executeIfStatement(lines, i);
+          const result = await executeIfStatement(lines, i);
           console.log('  -> IF completed, next line:', result.nextLine);
           i = result.nextLine;
           continue;
@@ -1064,7 +1207,7 @@
         // Handle for loops
         if (line.startsWith('for')) {
           console.log('  -> Executing FOR loop');
-          const result = executeForLoop(lines, i);
+          const result = await executeForLoop(lines, i);
           console.log('  -> FOR completed, next line:', result.nextLine);
           i = result.nextLine;
           continue;
@@ -1072,7 +1215,7 @@
         
         // Handle while loops
         if (line.startsWith('while') && !line.includes('}')) {
-          const result = executeWhileLoop(lines, i);
+          const result = await executeWhileLoop(lines, i);
           i = result.nextLine;
           continue;
         }
@@ -1106,7 +1249,7 @@
       console.log('executeBlock completed');
     }
 
-    function executeLine(line) {
+    async function executeLine(line) {
       console.log('executeLine called with:', line);
       // Remove trailing semicolon and braces
       line = line.replace(/[;{}]/g, '').trim();
@@ -1211,14 +1354,34 @@
       }
       
       // Function calls
-      const funcMatch = line.match(/^(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree)\(\)$/);
+      const funcMatch = line.match(/^(moveLeft|moveRight|attack|defend|heal|attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree|qa1|qa2|qa3|qml|qmr|charge|release|scan|stealth|backstab|gamble|critBoost|barrier|shieldBash|poison|cure)\(\)$|^teleportTo\((\d+)\)$|^combo\((\d+)\)$|^stealth\((\d+)\)$/);
       if (funcMatch) {
-        executeGameFunction(funcMatch[1]);
+        let funcName = funcMatch[1];
+        let arg = funcMatch[2] || funcMatch[3] || funcMatch[4];
+        
+        if (funcMatch[1]) {
+          executeGameFunction(funcMatch[1]);
+        } else if (funcMatch[2]) {
+          funcName = 'teleportTo';
+          executeGameFunction('teleportTo', parseInt(funcMatch[2]));
+        } else if (funcMatch[3]) {
+          funcName = 'combo';
+          executeGameFunction('combo', parseInt(funcMatch[3]));
+        } else if (funcMatch[4]) {
+          funcName = 'stealth';
+          executeGameFunction('stealth', parseInt(funcMatch[4]));
+        }
+        
+        // Apply cooldown delay
+        const cooldown = COOLDOWNS[funcName] || 500;
+        updateGameUI();
+        displayConsole();
+        await sleep(cooldown);
         return;
       }
     }
 
-    function executeIfStatement(lines, startIndex) {
+    async function executeIfStatement(lines, startIndex) {
       const ifLine = lines[startIndex].trim();
       console.log('executeIfStatement:', ifLine);
       const conditionMatch = ifLine.match(/if\s*\((.+)\)/);
@@ -1231,7 +1394,7 @@
       let blockEnd = findBlockEnd(lines, startIndex);
       
       if (condition) {
-        executeBlock(lines, blockStart, blockEnd);
+        await executeBlock(lines, blockStart, blockEnd);
         popScope();
         
         // Skip any else/else-if blocks
@@ -1259,7 +1422,7 @@
           const elseIfBlockEnd = findBlockEnd(lines, nextLine);
           
           if (elseIfCond) {
-            executeBlock(lines, elseIfBlockStart, elseIfBlockEnd);
+            await executeBlock(lines, elseIfBlockStart, elseIfBlockEnd);
             popScope();
             
             // Skip remaining else-if/else blocks
@@ -1277,7 +1440,7 @@
           pushScope();
           const elseBlockStart = nextLine + 1;
           const elseBlockEnd = findBlockEnd(lines, nextLine);
-          executeBlock(lines, elseBlockStart, elseBlockEnd);
+          await executeBlock(lines, elseBlockStart, elseBlockEnd);
           popScope();
           return { nextLine: elseBlockEnd };
         } else {
@@ -1288,7 +1451,7 @@
       return { nextLine: nextLine };
     }
 
-    function executeForLoop(lines, startIndex) {
+    async function executeForLoop(lines, startIndex) {
       const forLine = lines[startIndex].trim();
       console.log('executeForLoop:', forLine);
       const forMatch = forLine.match(/for\s*\((.+)\)/);
@@ -1301,7 +1464,7 @@
           pushScope();
           
           // Init
-          executeLine(parts[0]);
+          await executeLine(parts[0]);
           
           // Find loop block
           const blockStart = startIndex + 1;
@@ -1315,7 +1478,7 @@
             continueFlag = false;
             
             loopIterationBudget--;
-            executeBlock(lines, blockStart, blockEnd);
+            await executeBlock(lines, blockStart, blockEnd);
             
             if (breakFlag) {
               breakFlag = false;
@@ -1326,7 +1489,7 @@
               continueFlag = false;
             }
             
-            executeLine(parts[2]);
+            await executeLine(parts[2]);
             iterations++;
           }
           
@@ -1345,7 +1508,7 @@
       return { nextLine: findBlockEnd(lines, startIndex) };
     }
 
-    function executeWhileLoop(lines, startIndex) {
+    async function executeWhileLoop(lines, startIndex) {
       const whileLine = lines[startIndex].trim();
       const conditionMatch = whileLine.match(/while\s*\((.+)\)/);
       
@@ -1361,7 +1524,7 @@
           continueFlag = false;
           
           loopIterationBudget--;
-          executeBlock(lines, blockStart, blockEnd);
+          await executeBlock(lines, blockStart, blockEnd);
           
           if (breakFlag) {
             breakFlag = false;
@@ -1633,29 +1796,109 @@
       return result;
     }
     
-    function executeGameFunction(funcName) {
+    function executeGameFunction(funcName, arg) {
       switch(funcName) {
         case 'moveLeft':
-          if (gameState.playerPosition > 1) {
-            gameState.playerPosition--;
-            consoleLog('Player moved left to position ' + gameState.playerPosition, 'info');
+          if (currentActor === 'player') {
+            if (gameState.playerPosition > 1) {
+              gameState.playerPosition--;
+              consoleLog('Player moved left to position ' + gameState.playerPosition, 'info');
+            }
+          } else {
+            if (gameState.enemyPosition > 1) {
+              gameState.enemyPosition--;
+              consoleLog('Enemy moved left to position ' + gameState.enemyPosition, 'info');
+            }
           }
           break;
         case 'moveRight':
-          if (gameState.playerPosition < 3) {
-            gameState.playerPosition++;
-            consoleLog('Player moved right to position ' + gameState.playerPosition, 'info');
+          if (currentActor === 'player') {
+            if (gameState.playerPosition < 3) {
+              gameState.playerPosition++;
+              consoleLog('Player moved right to position ' + gameState.playerPosition, 'info');
+            }
+          } else {
+            if (gameState.enemyPosition < 3) {
+              gameState.enemyPosition++;
+              consoleLog('Enemy moved right to position ' + gameState.enemyPosition, 'info');
+            }
           }
           break;
         case 'attack':
-          // Check if player and enemy are in the same position
-          if (gameState.playerPosition === gameState.enemyPosition) {
-            const baseDamage = calculateDamage(gameState.complexityScore);
-            const damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
-            gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
-            consoleLog('Player attacks! Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+          if (currentActor === 'player') {
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              if (gameState.enemyStealthed && gameState.enemyStealthInstances > 0) {
+                gameState.enemyStealthInstances--;
+                consoleLog('Player attacks but enemy is stealthed! Attack avoided. (' + gameState.enemyStealthInstances + ' stealth instances remaining)', 'error');
+                if (gameState.enemyStealthInstances === 0) {
+                  gameState.enemyStealthed = false;
+                  consoleLog('Enemy stealth expired!', 'info');
+                }
+              } else {
+                let baseDamage = calculateDamage(gameState.complexityScore);
+                // Check for crit boost
+                let critApplied = false;
+                if (gameState.playerCritBoostActive && gameState.playerCritBoostCount > 0) {
+                  if (Math.random() < 0.5) {
+                    baseDamage *= 2;
+                    critApplied = true;
+                  }
+                  gameState.playerCritBoostCount--;
+                  if (gameState.playerCritBoostCount === 0) {
+                    gameState.playerCritBoostActive = false;
+                  }
+                }
+                let damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
+                // Apply to barrier first
+                if (gameState.enemyBarrier > 0) {
+                  const barrierDamage = Math.min(gameState.enemyBarrier, damage);
+                  gameState.enemyBarrier -= barrierDamage;
+                  damage -= barrierDamage;
+                  consoleLog('Player attacks! Enemy barrier absorbs ' + barrierDamage.toFixed(1) + ' damage. Barrier: ' + gameState.enemyBarrier.toFixed(1), 'info');
+                }
+                gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+                consoleLog('Player attacks!' + (critApplied ? ' CRITICAL HIT!' : '') + ' Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+              }
+            } else {
+              consoleLog('Attack missed! Enemy is not across from you. (Player: P' + gameState.playerPosition + ', Enemy: E' + gameState.enemyPosition + ')', 'error');
+            }
           } else {
-            consoleLog('Attack missed! Enemy is not across from you. (Player: P' + gameState.playerPosition + ', Enemy: E' + gameState.enemyPosition + ')', 'error');
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              if (gameState.playerStealthed && gameState.playerStealthInstances > 0) {
+                gameState.playerStealthInstances--;
+                consoleLog('Enemy attacks but player is stealthed! Attack avoided. (' + gameState.playerStealthInstances + ' stealth instances remaining)', 'error');
+                if (gameState.playerStealthInstances === 0) {
+                  gameState.playerStealthed = false;
+                  consoleLog('Player stealth expired!', 'info');
+                }
+              } else {
+                let baseDamage = calculateDamage(gameState.enemyComplexityScore);
+                // Check for crit boost
+                let critApplied = false;
+                if (gameState.enemyCritBoostActive && gameState.enemyCritBoostCount > 0) {
+                  if (Math.random() < 0.5) {
+                    baseDamage *= 2;
+                    critApplied = true;
+                  }
+                  gameState.enemyCritBoostCount--;
+                  if (gameState.enemyCritBoostCount === 0) {
+                    gameState.enemyCritBoostActive = false;
+                  }
+                }
+                let damage = gameState.enemyDefending ? baseDamage * 0.5 : baseDamage;
+                // Apply to barrier first
+                if (gameState.playerBarrier > 0) {
+                  const barrierDamage = Math.min(gameState.playerBarrier, damage);
+                  gameState.playerBarrier -= barrierDamage;
+                  damage -= barrierDamage;
+                  consoleLog('Enemy attacks! Player barrier absorbs ' + barrierDamage.toFixed(1) + ' damage. Barrier: ' + gameState.playerBarrier.toFixed(1), 'info');
+                }
+                gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+                consoleLog('Enemy attacks!' + (critApplied ? ' CRITICAL HIT!' : '') + ' Player takes ' + damage.toFixed(1) + ' damage. Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+              }
+            } else {
+              consoleLog('Enemy attack missed! Player is not across. (Player: P' + gameState.playerPosition + ', Enemy: E' + gameState.enemyPosition + ')', 'error');
+            }
           }
           break;
         case 'attackEnemySlotOne':
@@ -1668,25 +1911,518 @@
           performTargetedAttack(3);
           break;
         case 'defend':
-          gameState.defending = true;
-          consoleLog('Player is defending! (damage reduced)', 'info');
+          if (currentActor === 'player') {
+            gameState.defending = true;
+            consoleLog('Player is defending! (damage reduced)', 'info');
+          } else {
+            gameState.enemyDefending = true;
+            consoleLog('Enemy is defending! (damage reduced)', 'info');
+          }
           break;
         case 'heal':
-          const healAmount = calculateHeal(gameState.complexityScore);
-          gameState.playerHP = Math.min(100, gameState.playerHP + healAmount);
-          consoleLog('Player heals ' + healAmount.toFixed(1) + ' HP. Current HP: ' + gameState.playerHP.toFixed(1), 'info');
+          if (currentActor === 'player') {
+            const healAmount = calculateHeal(gameState.complexityScore);
+            gameState.playerHP = Math.min(100, gameState.playerHP + healAmount);
+            consoleLog('Player heals ' + healAmount.toFixed(1) + ' HP. Current HP: ' + gameState.playerHP.toFixed(1), 'info');
+          } else {
+            const healAmount = calculateHeal(gameState.enemyComplexityScore);
+            gameState.enemyHP = Math.min(100, gameState.enemyHP + healAmount);
+            consoleLog('Enemy heals ' + healAmount.toFixed(1) + ' HP. Current HP: ' + gameState.enemyHP.toFixed(1), 'info');
+          }
+          break;
+        
+        // ========== LIBRARY FUNCTIONS ==========
+        
+        // Utility Library: Quick attack aliases
+        case 'qa1':
+          if (!isLibraryEquipped('Utility')) {
+            consoleLog('Error: Utility library not equipped!', 'error');
+            return;
+          }
+          executeGameFunction('attackEnemySlotOne');
+          break;
+        case 'qa2':
+          if (!isLibraryEquipped('Utility')) {
+            consoleLog('Error: Utility library not equipped!', 'error');
+            return;
+          }
+          executeGameFunction('attackEnemySlotTwo');
+          break;
+        case 'qa3':
+          if (!isLibraryEquipped('Utility')) {
+            consoleLog('Error: Utility library not equipped!', 'error');
+            return;
+          }
+          executeGameFunction('attackEnemySlotThree');
+          break;
+        case 'qml':
+          if (!isLibraryEquipped('Utility')) {
+            consoleLog('Error: Utility library not equipped!', 'error');
+            return;
+          }
+          executeGameFunction('moveLeft');
+          break;
+        case 'qmr':
+          if (!isLibraryEquipped('Utility')) {
+            consoleLog('Error: Utility library not equipped!', 'error');
+            return;
+          }
+          executeGameFunction('moveRight');
+          break;
+        
+        // Charge Library: Stack and release
+        case 'charge':
+          if (!isLibraryEquipped('Charge')) {
+            consoleLog('Error: Charge library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            gameState.playerChargeStack++;
+            consoleLog('Player charges! Stack: ' + gameState.playerChargeStack, 'info');
+          } else {
+            gameState.enemyChargeStack++;
+            consoleLog('Enemy charges! Stack: ' + gameState.enemyChargeStack, 'info');
+          }
+          break;
+        case 'release':
+          if (!isLibraryEquipped('Charge')) {
+            consoleLog('Error: Charge library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            if (gameState.playerChargeStack === 0) {
+              consoleLog('No charge to release!', 'error');
+              return;
+            }
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              const baseDamage = calculateDamage(gameState.complexityScore);
+              const multiplier = 1 + (gameState.playerChargeStack * 0.5);
+              const damage = (gameState.defending ? baseDamage * 0.5 : baseDamage) * multiplier;
+              gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+              consoleLog('Player releases charge x' + gameState.playerChargeStack + '! Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+              gameState.playerChargeStack = 0;
+            } else {
+              consoleLog('Charge release missed! Enemy is not across from you.', 'error');
+              gameState.playerChargeStack = 0;
+            }
+          } else {
+            if (gameState.enemyChargeStack === 0) {
+              consoleLog('No charge to release!', 'error');
+              return;
+            }
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              const baseDamage = calculateDamage(gameState.enemyComplexityScore);
+              const multiplier = 1 + (gameState.enemyChargeStack * 0.5);
+              const damage = (gameState.enemyDefending ? baseDamage * 0.5 : baseDamage) * multiplier;
+              gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+              consoleLog('Enemy releases charge x' + gameState.enemyChargeStack + '! Player takes ' + damage.toFixed(1) + ' damage. Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+              gameState.enemyChargeStack = 0;
+            } else {
+              consoleLog('Enemy charge release missed!', 'error');
+              gameState.enemyChargeStack = 0;
+            }
+          }
+          break;
+        
+        // Teleport Library: Instant movement
+        case 'teleportTo':
+          if (!isLibraryEquipped('Teleport')) {
+            consoleLog('Error: Teleport library not equipped!', 'error');
+            return;
+          }
+          const targetSlot = arg;
+          if (targetSlot < 1 || targetSlot > 3) {
+            consoleLog('Error: Invalid teleport slot ' + targetSlot + '. Must be 1, 2, or 3.', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            gameState.playerPosition = targetSlot;
+            consoleLog('Player teleports to slot ' + targetSlot + '!', 'info');
+          } else {
+            gameState.enemyPosition = targetSlot;
+            consoleLog('Enemy teleports to slot ' + targetSlot + '!', 'info');
+          }
+          break;
+        
+        // Vision Library: Scan enemy position
+        case 'scan':
+          if (!isLibraryEquipped('Vision')) {
+            consoleLog('Error: Vision library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            const enemySlot = gameState.enemyPosition;
+            consoleLog('Scan complete! Enemy is in slot ' + enemySlot + '.', 'info');
+            // Store the result in a variable if one exists (for future enhancement)
+          } else {
+            const playerSlot = gameState.playerPosition;
+            consoleLog('Enemy scans! Player is in slot ' + playerSlot + '.', 'info');
+          }
+          break;
+        
+        // Combo Library: Chained attacks with damage bonus
+        case 'combo':
+          if (!isLibraryEquipped('Combo')) {
+            consoleLog('Error: Combo library not equipped!', 'error');
+            return;
+          }
+          const comboNum = arg;
+          if (!comboNum || comboNum < 1) {
+            consoleLog('Error: Invalid combo number. Must be 1 or greater.', 'error');
+            return;
+          }
+          
+          if (currentActor === 'player') {
+            // Check if this is the expected combo number
+            if (comboNum !== gameState.playerExpectedCombo) {
+              consoleLog('Combo broken! Expected combo ' + gameState.playerExpectedCombo + ' but got ' + comboNum + '. Resetting...', 'error');
+              gameState.playerComboCount = 0;
+              gameState.playerExpectedCombo = 1;
+              return;
+            }
+            
+            // Check if attack hits
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              const baseDamage = calculateDamage(gameState.complexityScore) * 0.75; // 25% weaker starting
+              const comboMultiplier = 1 + (gameState.playerComboCount * 0.2); // 20% per successful hit
+              const damage = (gameState.defending ? baseDamage * 0.5 : baseDamage) * comboMultiplier;
+              gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+              gameState.playerComboCount++;
+              gameState.playerExpectedCombo++;
+              consoleLog('Combo ' + comboNum + ' hits! Enemy takes ' + damage.toFixed(1) + ' damage (x' + comboMultiplier.toFixed(1) + ' multiplier). Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+            } else {
+              consoleLog('Combo ' + comboNum + ' missed! Enemy not in position. Combo reset.', 'error');
+              gameState.playerComboCount = 0;
+              gameState.playerExpectedCombo = 1;
+            }
+          } else {
+            // Enemy combo logic
+            if (comboNum !== gameState.enemyExpectedCombo) {
+              consoleLog('Enemy combo broken! Resetting...', 'error');
+              gameState.enemyComboCount = 0;
+              gameState.enemyExpectedCombo = 1;
+              return;
+            }
+            
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              const baseDamage = calculateDamage(gameState.enemyComplexityScore) * 0.75;
+              const comboMultiplier = 1 + (gameState.enemyComboCount * 0.2);
+              const damage = (gameState.enemyDefending ? baseDamage * 0.5 : baseDamage) * comboMultiplier;
+              gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+              gameState.enemyComboCount++;
+              gameState.enemyExpectedCombo++;
+              consoleLog('Enemy combo ' + comboNum + ' hits! Player takes ' + damage.toFixed(1) + ' damage. Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+            } else {
+              consoleLog('Enemy combo ' + comboNum + ' missed! Combo reset.', 'error');
+              gameState.enemyComboCount = 0;
+              gameState.enemyExpectedCombo = 1;
+            }
+          }
+          break;
+        
+        // Stealth Library: Become invisible
+        case 'stealth':
+          if (!isLibraryEquipped('Stealth')) {
+            consoleLog('Error: Stealth library not equipped!', 'error');
+            return;
+          }
+          const instances = arg || 3; // Default 3 instances if no arg provided
+          if (currentActor === 'player') {
+            gameState.playerStealthed = true;
+            gameState.playerStealthInstances = instances;
+            consoleLog('Player enters stealth! Immune to ' + instances + ' attack instances.', 'info');
+          } else {
+            gameState.enemyStealthed = true;
+            gameState.enemyStealthInstances = instances;
+            consoleLog('Enemy enters stealth! Immune to ' + instances + ' attack instances.', 'info');
+          }
+          break;
+        
+        // Stealth Library: Backstab attack
+        case 'backstab':
+          if (!isLibraryEquipped('Stealth')) {
+            consoleLog('Error: Stealth library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            if (!gameState.playerStealthed) {
+              consoleLog('Cannot backstab without being stealthed!', 'error');
+              return;
+            }
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              const baseDamage = calculateDamage(gameState.complexityScore) * 1.5;
+              const damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
+              gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+              consoleLog('Player backstabs! Enemy takes ' + damage.toFixed(1) + ' damage (1.5x). Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+              gameState.playerStealthed = false;
+              gameState.playerStealthInstances = 0;
+              consoleLog('Player stealth broken after backstab!', 'info');
+            } else {
+              consoleLog('Backstab missed! Enemy is not across from you.', 'error');
+            }
+          } else {
+            if (!gameState.enemyStealthed) {
+              consoleLog('Enemy cannot backstab without being stealthed!', 'error');
+              return;
+            }
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              const baseDamage = calculateDamage(gameState.enemyComplexityScore) * 1.5;
+              const damage = gameState.enemyDefending ? baseDamage * 0.5 : baseDamage;
+              gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+              consoleLog('Enemy backstabs! Player takes ' + damage.toFixed(1) + ' damage (1.5x). Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+              gameState.enemyStealthed = false;
+              gameState.enemyStealthInstances = 0;
+              consoleLog('Enemy stealth broken after backstab!', 'info');
+            } else {
+              consoleLog('Enemy backstab missed!', 'error');
+            }
+          }
+          break;
+        
+        // Fortune Library: Gamble for random damage
+        case 'gamble':
+          if (!isLibraryEquipped('Fortune')) {
+            consoleLog('Error: Fortune library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              const baseDamage = calculateDamage(gameState.complexityScore);
+              const randomMultiplier = 0.5 + Math.random() * 1.5; // 0.5x to 2.0x
+              const damage = (gameState.defending ? baseDamage * 0.5 : baseDamage) * randomMultiplier;
+              gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+              consoleLog('Player gambles! Enemy takes ' + damage.toFixed(1) + ' damage (' + (randomMultiplier * 100).toFixed(0) + '%). Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+            } else {
+              consoleLog('Gamble missed! Enemy is not across from you.', 'error');
+            }
+          } else {
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              const baseDamage = calculateDamage(gameState.enemyComplexityScore);
+              const randomMultiplier = 0.5 + Math.random() * 1.5;
+              const damage = (gameState.enemyDefending ? baseDamage * 0.5 : baseDamage) * randomMultiplier;
+              gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+              consoleLog('Enemy gambles! Player takes ' + damage.toFixed(1) + ' damage. Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+            } else {
+              consoleLog('Enemy gamble missed!', 'error');
+            }
+          }
+          break;
+        
+        // Fortune Library: Crit boost
+        case 'critBoost':
+          if (!isLibraryEquipped('Fortune')) {
+            consoleLog('Error: Fortune library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            gameState.playerCritBoostActive = true;
+            gameState.playerCritBoostCount = 3;
+            consoleLog('Player activates crit boost! Next 3 attacks have 50% chance for 2x damage.', 'info');
+          } else {
+            gameState.enemyCritBoostActive = true;
+            gameState.enemyCritBoostCount = 3;
+            consoleLog('Enemy activates crit boost! Next 3 attacks have 50% chance for 2x damage.', 'info');
+          }
+          break;
+        
+        // Shield Library: Create barrier
+        case 'barrier':
+          if (!isLibraryEquipped('Shield')) {
+            consoleLog('Error: Shield library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            const barrierAmount = calculateBarrier(gameState.complexityScore);
+            gameState.playerBarrier = barrierAmount;
+            consoleLog('Player creates barrier with ' + barrierAmount.toFixed(1) + ' HP!', 'info');
+          } else {
+            const barrierAmount = calculateBarrier(gameState.enemyComplexityScore);
+            gameState.enemyBarrier = barrierAmount;
+            consoleLog('Enemy creates barrier with ' + barrierAmount.toFixed(1) + ' HP!', 'info');
+          }
+          break;
+        
+        // Shield Library: Shield bash
+        case 'shieldBash':
+          if (!isLibraryEquipped('Shield')) {
+            consoleLog('Error: Shield library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            if (gameState.playerBarrier === 0) {
+              consoleLog('No barrier to bash with!', 'error');
+              return;
+            }
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              const damage = gameState.playerBarrier;
+              gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+              consoleLog('Player shield bashes! Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+              gameState.playerBarrier = 0;
+              consoleLog('Player barrier destroyed!', 'info');
+            } else {
+              consoleLog('Shield bash missed! Enemy is not across from you.', 'error');
+            }
+          } else {
+            if (gameState.enemyBarrier === 0) {
+              consoleLog('Enemy has no barrier to bash with!', 'error');
+              return;
+            }
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              const damage = gameState.enemyBarrier;
+              gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+              consoleLog('Enemy shield bashes! Player takes ' + damage.toFixed(1) + ' damage. Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+              gameState.enemyBarrier = 0;
+              consoleLog('Enemy barrier destroyed!', 'info');
+            } else {
+              consoleLog('Enemy shield bash missed!', 'error');
+            }
+          }
+          break;
+        
+        // Poison Library: Apply poison
+        case 'poison':
+          if (!isLibraryEquipped('Poison')) {
+            consoleLog('Error: Poison library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            if (gameState.playerPosition === gameState.enemyPosition) {
+              gameState.enemyPoisoned = true;
+              gameState.enemyPoisonTurns = 3;
+              consoleLog('Player poisons enemy! Enemy will take 5 damage per turn for 3 turns.', 'info');
+            } else {
+              consoleLog('Poison missed! Enemy is not across from you.', 'error');
+            }
+          } else {
+            if (gameState.enemyPosition === gameState.playerPosition) {
+              gameState.playerPoisoned = true;
+              gameState.playerPoisonTurns = 3;
+              consoleLog('Enemy poisons player! Player will take 5 damage per turn for 3 turns.', 'info');
+            } else {
+              consoleLog('Enemy poison missed!', 'error');
+            }
+          }
+          break;
+        
+        // Poison Library: Cure poison
+        case 'cure':
+          if (!isLibraryEquipped('Poison')) {
+            consoleLog('Error: Poison library not equipped!', 'error');
+            return;
+          }
+          if (currentActor === 'player') {
+            if (gameState.playerPoisoned) {
+              gameState.playerPoisoned = false;
+              gameState.playerPoisonTurns = 0;
+              consoleLog('Player cured poison!', 'info');
+            } else {
+              consoleLog('Player is not poisoned.', 'info');
+            }
+          } else {
+            if (gameState.enemyPoisoned) {
+              gameState.enemyPoisoned = false;
+              gameState.enemyPoisonTurns = 0;
+              consoleLog('Enemy cured poison!', 'info');
+            } else {
+              consoleLog('Enemy is not poisoned.', 'info');
+            }
+          }
           break;
       }
     }
+    
+    // Check if a library is equipped
+    function isLibraryEquipped(libraryName) {
+      try {
+        const saved = localStorage.getItem('equippedLibraries');
+        if (!saved) return false;
+        const equippedLibraries = JSON.parse(saved);
+        return equippedLibraries.includes(libraryName);
+      } catch (e) {
+        return false;
+      }
+    }
+    
+    // Sleep helper for cooldowns
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
     function performTargetedAttack(targetSlot) {
-      if (gameState.enemyPosition === targetSlot) {
-        const baseDamage = calculateDamage(gameState.complexityScore);
-        const damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
-        gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
-        consoleLog('Player targets enemy slot ' + targetSlot + '! Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+      if (currentActor === 'player') {
+        if (gameState.enemyPosition === targetSlot) {
+          if (gameState.enemyStealthed && gameState.enemyStealthInstances > 0) {
+            gameState.enemyStealthInstances--;
+            consoleLog('Player targets slot ' + targetSlot + ' but enemy is stealthed! Attack avoided. (' + gameState.enemyStealthInstances + ' stealth instances remaining)', 'error');
+            if (gameState.enemyStealthInstances === 0) {
+              gameState.enemyStealthed = false;
+              consoleLog('Enemy stealth expired!', 'info');
+            }
+          } else {
+            let baseDamage = calculateDamage(gameState.complexityScore);
+            // Check for crit boost
+            let critApplied = false;
+            if (gameState.playerCritBoostActive && gameState.playerCritBoostCount > 0) {
+              if (Math.random() < 0.5) {
+                baseDamage *= 2;
+                critApplied = true;
+              }
+              gameState.playerCritBoostCount--;
+              if (gameState.playerCritBoostCount === 0) {
+                gameState.playerCritBoostActive = false;
+              }
+            }
+            let damage = gameState.defending ? baseDamage * 0.5 : baseDamage;
+            // Apply to barrier first
+            if (gameState.enemyBarrier > 0) {
+              const barrierDamage = Math.min(gameState.enemyBarrier, damage);
+              gameState.enemyBarrier -= barrierDamage;
+              damage -= barrierDamage;
+              consoleLog('Player targets slot ' + targetSlot + '! Enemy barrier absorbs ' + barrierDamage.toFixed(1) + ' damage. Barrier: ' + gameState.enemyBarrier.toFixed(1), 'info');
+            }
+            gameState.enemyHP = Math.max(0, gameState.enemyHP - damage);
+            consoleLog('Player targets enemy slot ' + targetSlot + '!' + (critApplied ? ' CRITICAL HIT!' : '') + ' Enemy takes ' + damage.toFixed(1) + ' damage. Enemy HP: ' + gameState.enemyHP.toFixed(1), 'info');
+          }
+        } else {
+          consoleLog('Targeted attack missed! Enemy is not in slot ' + targetSlot + '. (Enemy is in E' + gameState.enemyPosition + ')', 'error');
+        }
       } else {
-        consoleLog('Targeted attack missed! Enemy is not in slot ' + targetSlot + '. (Enemy is in E' + gameState.enemyPosition + ')', 'error');
+        if (gameState.playerPosition === targetSlot) {
+          if (gameState.playerStealthed && gameState.playerStealthInstances > 0) {
+            gameState.playerStealthInstances--;
+            consoleLog('Enemy targets slot ' + targetSlot + ' but player is stealthed! Attack avoided. (' + gameState.playerStealthInstances + ' stealth instances remaining)', 'error');
+            if (gameState.playerStealthInstances === 0) {
+              gameState.playerStealthed = false;
+              consoleLog('Player stealth expired!', 'info');
+            }
+          } else {
+            let baseDamage = calculateDamage(gameState.enemyComplexityScore);
+            // Check for crit boost
+            let critApplied = false;
+            if (gameState.enemyCritBoostActive && gameState.enemyCritBoostCount > 0) {
+              if (Math.random() < 0.5) {
+                baseDamage *= 2;
+                critApplied = true;
+              }
+              gameState.enemyCritBoostCount--;
+              if (gameState.enemyCritBoostCount === 0) {
+                gameState.enemyCritBoostActive = false;
+              }
+            }
+            let damage = gameState.enemyDefending ? baseDamage * 0.5 : baseDamage;
+            // Apply to barrier first
+            if (gameState.playerBarrier > 0) {
+              const barrierDamage = Math.min(gameState.playerBarrier, damage);
+              gameState.playerBarrier -= barrierDamage;
+              damage -= barrierDamage;
+              consoleLog('Enemy targets slot ' + targetSlot + '! Player barrier absorbs ' + barrierDamage.toFixed(1) + ' damage. Barrier: ' + gameState.playerBarrier.toFixed(1), 'info');
+            }
+            gameState.playerHP = Math.max(0, gameState.playerHP - damage);
+            consoleLog('Enemy targets player slot ' + targetSlot + '!' + (critApplied ? ' CRITICAL HIT!' : '') + ' Player takes ' + damage.toFixed(1) + ' damage. Player HP: ' + gameState.playerHP.toFixed(1), 'info');
+          }
+        } else {
+          consoleLog('Enemy targeted attack missed! Player is not in slot ' + targetSlot + '. (Player is in P' + gameState.playerPosition + ')', 'error');
+        }
       }
     }
 
@@ -1750,6 +2486,100 @@
       // Heal formula: f(x) = 0.05x^1.3 + 2
       if (score === 0) return 2; // Minimum heal
       return 0.05 * Math.pow(score, 1.3) + 2;
+    }
+
+    function calculateBarrier(score) {
+      // Barrier formula: f(x) = 0.15x^1.3 + 5
+      if (score === 0) return 5; // Minimum barrier
+      return 0.15 * Math.pow(score, 1.3) + 5;
+    }
+
+    // Enemy strategies: a large list of possible code snippets
+    const ENEMY_STRATEGIES = [
+      // Simple defend then attack
+      () => [
+        '// Enemy Strategy: Defend then attack',
+        'defend();',
+        'attack();',
+        'System.out.println("Enemy strikes!");'
+      ].join('\n'),
+      // Target player slot directly
+      () => [
+        '// Enemy Strategy: Target slot one',
+        'attackEnemySlotOne();',
+        'System.out.println("Targeting slot 1");'
+      ].join('\n'),
+      () => [
+        '// Enemy Strategy: Target slot two',
+        'attackEnemySlotTwo();',
+        'System.out.println("Targeting slot 2");'
+      ].join('\n'),
+      () => [
+        '// Enemy Strategy: Target slot three',
+        'attackEnemySlotThree();',
+        'System.out.println("Targeting slot 3");'
+      ].join('\n'),
+      // Zigzag movement loop
+      () => [
+        '// Enemy Strategy: Zigzag movement',
+        'int i = 0;',
+        'for (i = 0; i < 3; i++) {',
+        '  moveLeft();',
+        '  moveRight();',
+        '}',
+        'attack();',
+        'System.out.println("Zigzag complete");'
+      ].join('\n'),
+      // Move toward player then attack targeted slot
+      () => {
+        const lines = [];
+        lines.push('// Enemy Strategy: Move toward player then target');
+        if (gameState.enemyPosition < gameState.playerPosition) {
+          lines.push('moveRight();');
+        } else if (gameState.enemyPosition > gameState.playerPosition) {
+          lines.push('moveLeft();');
+        } else {
+          lines.push('defend();');
+        }
+        const t = gameState.playerPosition;
+        if (t === 1) lines.push('attackEnemySlotOne();');
+        else if (t === 2) lines.push('attackEnemySlotTwo();');
+        else lines.push('attackEnemySlotThree();');
+        lines.push('System.out.println("Advance and strike");');
+        return lines.join('\n');
+      },
+      // Taunt and defend
+      () => [
+        '// Enemy Strategy: Taunt and defend',
+        'System.out.print("Taunting...");',
+        'defend();',
+        'System.out.println("Ready");'
+      ].join('\n'),
+      // Double strike pattern
+      () => [
+        '// Enemy Strategy: Double strike',
+        'attack();',
+        'attack();',
+        'System.out.println("Double hit!");'
+      ].join('\n'),
+      // Sweep across slots
+      () => [
+        '// Enemy Strategy: Sweep slots',
+        'attackEnemySlotOne();',
+        'attackEnemySlotTwo();',
+        'attackEnemySlotThree();',
+        'System.out.println("Sweep complete");'
+      ].join('\n'),
+    ];
+
+    function pickRandomEnemyCode() {
+      const idx = Math.floor(Math.random() * ENEMY_STRATEGIES.length);
+      return ENEMY_STRATEGIES[idx]();
+    }
+
+    // Generate a random enemy code snippet each turn
+    function generateEnemyCode() {
+      return pickRandomEnemyCode();
     }
 
     function calculateLineScore(line) {
@@ -1828,6 +2658,56 @@
       // Targeted attack functions: 2 points each (lower score, easier to use)
       if (/(attackEnemySlotOne|attackEnemySlotTwo|attackEnemySlotThree)\(\)/.test(line)) {
         score += 2;
+      }
+      
+      // Library functions: Utility shortcuts (1 point - very easy)
+      if (/(qa1|qa2|qa3|qml|qmr)\(\)/.test(line)) {
+        score += 1;
+      }
+      
+      // Library functions: Charge mechanics (4 points - strategic)
+      if (/(charge|release)\(\)/.test(line)) {
+        score += 4;
+      }
+      
+      // Library functions: Teleport (3 points - moderate complexity)
+      if (/teleportTo\(\d+\)/.test(line)) {
+        score += 3;
+      }
+      
+      // Library functions: Vision (2 points - information gathering)
+      if (/scan\(\)/.test(line)) {
+        score += 2;
+      }
+      
+      // Library functions: Combo (5 points - high skill requirement)
+      if (/combo\(\d+\)/.test(line)) {
+        score += 5;
+      }
+      
+      // Library functions: Stealth (4 points - tactical defensive)
+      if (/stealth\(\d*\)/.test(line)) {
+        score += 4;
+      }
+      
+      // Library functions: Backstab (6 points - high damage conditional)
+      if (/backstab\(\)/.test(line)) {
+        score += 6;
+      }
+      
+      // Library functions: Fortune (4 points - RNG based)
+      if (/(gamble|critBoost)\(\)/.test(line)) {
+        score += 4;
+      }
+      
+      // Library functions: Shield (3 points - defensive utility)
+      if (/(barrier|shieldBash)\(\)/.test(line)) {
+        score += 3;
+      }
+      
+      // Library functions: Poison (4 points - DoT strategy)
+      if (/(poison|cure)\(\)/.test(line)) {
+        score += 4;
       }
 
       // Increment/decrement operators (++, --): 1 point
@@ -1913,6 +2793,7 @@
   <aside id="enemyCode">
     <div>
       <h2>Enemy Code</h2>
+      <button id="startBattleButton">Start battle</button>
       <button id="exitButton">Exit</button>
     </div>
     <textarea id="enemyCodeArea" placeholder="Opponent's code will appear here..." readonly></textarea>
