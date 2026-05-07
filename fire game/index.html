@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Fire Game</title>
+        <style>
+            body {
+                margin: 0;
+                overflow: hidden;
+                background-color: #000;
+            }
+            canvas {
+                display: block;
+                margin: auto;
+                background-color: white;
+            }
+        </style>
+    </head>
+    <body>
+        <input id="compression-meter" type="Number" placeholder="100" style="position: absolute; top: 10px; left: 10px; z-index: 1;">
+        <input id="change-rate" type="Number" placeholder="10" style="position: absolute; top: 40px; left: 10px; z-index: 1;">
+        <canvas id="gameCanvas"></canvas>
+        <script>
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const compressionMeter = document.getElementById('compression-meter');
+            const changeRateInput = document.getElementById('change-rate');
+            let compressionPower = 100; // Global variable to track compression power
+            let changeRate = 10; // Global variable to track change rate
+
+            compressionMeter.addEventListener('input', () => {
+                compressionPower = parseInt(compressionMeter.value) || 100; // Update compression power based on input, default to 100 if invalid
+            });
+
+            changeRateInput.addEventListener('input', () => {
+                changeRate = parseInt(changeRateInput.value) || 10; // Update change rate based on input, default to 10 if invalid
+            });
+
+
+            // FireParticle class to represent each fire particle
+            // DIVIDER -----------------------------------------------------------------------------------
+            // -------------------------------------------------------------------------------------------
+
+            class FireParticle {
+                constructor(x, y) {
+                    this.x = x;
+                    this.y = y;
+                    this.size = 25;
+                    this.speedX = 2;
+                    this.speedY = 2;
+                    this.speedMultipler = 1;
+                    this.targetedX = 500;
+                    this.targetedY = 500;
+                    this.power = 25;
+                    this.color = `rgba(255, 0, 0, 1)`;
+                }
+                update() {
+                    //I want to add code to make particles be able to pysically interact with each other, they should have a hitbox smaller than the actual size of the particle, and when they collide, they should be able to push each other away, and the more they are compressed, the more power they have, which will make them move faster and be bigger
+                    this.findPower();
+                    this.changeColor();
+                    this.x += this.speedX * this.speedMultipler;
+                    this.y += this.speedY * this.speedMultipler;
+                    this.size -= this.size * 0.02; // Decrease size by 2% each frame
+                    if (this.size < 0) this.size = 0;
+                    this.speedMultipler *= 0.985; // Decrease speed multiplier by 1.5% each frame
+
+                }
+                draw() {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                empowerFlame() {
+                    this.size += 2; // Increase size by 2
+                    this.changeColor(); // Update color based on new power level
+                }
+
+                changeColor() {
+                    // Red (0-10), Yellow (10-20), Blue (20-30), White (30+)
+                    let red = 255, green = 0, blue = 0;
+                    if (this.power < changeRate) {
+                        // Red to Yellow (add green)
+                        green = Math.round((this.power / changeRate) * 255);
+                    } else if (this.power < 2 * changeRate) {
+                        // Yellow to Blue (remove red/green, add blue)
+                        let t = (this.power - changeRate) / changeRate;
+                        red = Math.round(255 * (1 - t));
+                        green = Math.round(255 * (1 - t));
+                        blue = Math.round(255 * t);
+                    } else if (this.power < 3 * changeRate) {
+                        // Blue to White (add red/green)
+                        let t = (this.power - 2 * changeRate) / changeRate;
+                        red = Math.round(255 * t);
+                        green = Math.round(255 * t);
+                        blue = 255;
+                    } else {
+                        // White
+                        red = 255;
+                        green = 255;
+                        blue = 255;
+                    }
+                    this.color = `rgba(${red}, ${green}, ${blue}, 1)`;
+                }
+
+                setTarget(x, y) {
+                    this.targetedX = x;
+                    this.targetedY = y;
+                }
+
+                findPower() {
+                    //calculates power based on compression with other particles, the more compressed, the more power
+                    let power = 0;
+                    for (let i = 0; i < particles.length; i++) {
+                        if (particles[i] !== this) {
+                            let dx = this.x - particles[i].x;
+                            let dy = this.y - particles[i].y;
+                            let distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance < this.size + particles[i].size) {
+                                power += 1; // Increase power for each overlapping particle
+                                this.speedMultipler -= 0.01; // Decrease speed multiplier when compressed
+                                // Push particles away from each other
+                                let angle = Math.atan2(dy, dx);
+                                let push = (this.size + particles[i].size - distance) / compressionPower; // Adjust push based on compression power
+                                this.x += Math.cos(angle) * push;
+                                this.y += Math.sin(angle) * push;
+                                particles[i].x -= Math.cos(angle) * push;
+                                particles[i].y -= Math.sin(angle) * push;
+                            }
+                        }
+                    }
+                    this.power = power;
+                }
+
+                redirectFlame(projectedX, projectedY) {
+                    this.speedX = projectedX;
+                    this.speedY = projectedY;
+                    this.speedMultipler = 1.05; // Reset speed multiplier when redirecting
+                }
+
+
+            }
+
+            //DIVIDER -----------------------------------------------------------------------------------
+            // ------------------------------------------------------------------------------------------
+
+            const particles = [];
+            // Store last mouse position
+            let lastMouseX = null;
+            let lastMouseY = null;
+
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].update();
+                    particles[i].draw();
+                    if (particles[i].size <= 0.2) {
+                        particles.splice(i, 1);
+                        i--;
+                    }
+                }
+                requestAnimationFrame(animate);
+            }
+            //everytime I click on the canvas, it will create 10 fire particles at the location of the click
+            canvas.addEventListener('mousemove', function(event) {
+                const rect = canvas.getBoundingClientRect();
+                lastMouseX = event.clientX - rect.left;
+                lastMouseY = event.clientY - rect.top;
+            });
+
+
+            // Multi-key handling
+            const keysDown = {};
+            let qInterval = null;
+
+            function spawnQParticles() {
+                let x = lastMouseX !== null ? lastMouseX : canvas.width / 2;
+                let y = lastMouseY !== null ? lastMouseY : canvas.height / 2;
+                for (let i = 0; i < 10; i++) {
+                    createParticle(x, y);
+                }
+            }
+
+
+            // Handle key actions for Q, Space, and R
+            // ----------------------------------------------------------------------------------------
+
+            function handleKeyActions() {
+                // Q: spawn particles while held
+                if (keysDown['KeyQ']) {
+                    if (!qInterval) {
+                        spawnQParticles(); // burst on tap
+                        qInterval = setInterval(spawnQParticles, 100);
+                    }
+                } else {
+                    if (qInterval) {
+                        clearInterval(qInterval);
+                        qInterval = null;
+                    }
+                }
+                // Space: empower flames (on press)
+                if (keysDown['Space'] && !keysDown._spaceHandled) {
+                    empowerFlames();
+                    keysDown._spaceHandled = true;
+                }
+                // R: redirect flames (on press)
+                if (keysDown['KeyR'] && !keysDown._rHandled) {
+                    redirectFlames();
+                    keysDown._rHandled = true;
+                }
+            }
+
+            document.addEventListener('keydown', function(event) {
+                if (!keysDown[event.code]) {
+                    keysDown[event.code] = true;
+                }
+                handleKeyActions();
+            });
+
+            document.addEventListener('keyup', function(event) {
+                keysDown[event.code] = false;
+                // Reset one-shot handlers
+                if (event.code === 'Space') keysDown._spaceHandled = false;
+                if (event.code === 'KeyR') keysDown._rHandled = false;
+                handleKeyActions();
+            });
+
+            function createParticle(x, y) {
+                particles.push(new FireParticle(x, y));
+            }
+
+            function redirectFlames() {
+                if (lastMouseX === null || lastMouseY === null || particles.length === 0) return;
+                const duration = 1000; // Duration of the redirect effect in milliseconds
+                for (let i = 0; i < particles.length; i++) {
+                    let dx = lastMouseX - particles[i].x;
+                    let dy = lastMouseY - particles[i].y;
+                    let speedX = dx / (duration / 16); // 16ms per frame
+                    let speedY = dy / (duration / 16);
+                    particles[i].redirectFlame(speedX, speedY);
+                }
+            }
+
+            function empowerFlames() {
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].empowerFlame();
+                }
+            }
+
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'Space') {
+                    empowerFlames();
+                }
+                if (event.code === 'KeyR') {
+                    redirectFlames();
+                }
+            });
+
+
+            function update() {
+                //delete particles that are too small
+                for (let i = 0; i < particles.length; i++) {
+                    if (particles[i].size <= 0) {
+                        particles.splice(i, 1);
+                        i--;
+                    }
+                }
+            }
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+            animate();
+            
+        </script>
+    </body>
+</html>
